@@ -1,6 +1,6 @@
 {
   "name": "photoflow",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Streamlined publish/subscribe workflow for photographers and media teams covering live events.",
