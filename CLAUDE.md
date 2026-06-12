@@ -9,6 +9,18 @@ images to subscribers.
 The application is primarily intended for photography, with basic video
 support included.
 
+## Repository model
+
+This codebase is developed in a **private upstream repository** and published to
+a **public mirror**. Development is private-first: features land upstream, and
+curated snapshots are published from there — the public mirror has its own clean
+history and is **not edited directly**.
+
+Maintainers working from the private repository will find the full private↔public
+release and publishing procedure in `MAINTAINING.md` there (intentionally not part
+of the public mirror). **Never commit secrets** — only the upstream's git-tracked
+files are published, and `.env` is gitignored.
+
 ## Events
 
 PhotoFlow is designed around event coverage. Before the event, a new event is
