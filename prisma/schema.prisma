@@ -1,0 +1,236 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  PUBLISHER
+  SUBSCRIBER
+  PENDING
+}
+
+enum ArchiveJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  username            String               @unique
+  email               String?              @unique
+  name                String?
+  password            String
+  role                UserRole
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  media               Media[]
+  collections         Collection[]
+  publishLogs         PublishLog[]
+  passwordResetTokens PasswordResetToken[]
+  filterPresets       FilterPreset[]
+  archiveJobs         ArchiveJob[]
+}
+
+model FilterPreset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope     String // "stream" | "browse"
+  name      String
+  filters   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, scope, name])
+  @@index([userId, scope])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Event {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  startDate   DateTime
+  endDate     DateTime?
+  isActive    Boolean      @default(true)
+  aiEnabled   Boolean      @default(true)
+  imageSizes  Json? // per-event override of global image-size config
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  media       Media[]
+  collections Collection[]
+  archiveJobs ArchiveJob[]
+}
+
+model ArchiveJob {
+  id            String           @id @default(cuid())
+  eventId       String
+  event         Event            @relation(fields: [eventId], references: [id])
+  status        ArchiveJobStatus @default(PENDING)
+  requestedById String
+  requestedBy   User             @relation(fields: [requestedById], references: [id])
+  options       Json? // export-time toggles (e.g. stripPii)
+  progressPct   Int              @default(0)
+  itemsTotal    Int              @default(0)
+  itemsDone     Int              @default(0)
+  s3Key         String?
+  sizeBytes     BigInt?
+  errorMessage  String?          @db.Text
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([eventId, createdAt])
+  @@index([status])
+  // The single-flight in-flight check filters on eventId + status; a composite
+  // index lets it probe directly instead of scanning all rows for the event.
+  @@index([eventId, status])
+}
+
+model Media {
+  id               String  @id @default(cuid())
+  eventId          String
+  event            Event   @relation(fields: [eventId], references: [id])
+  uploaderId       String
+  uploader         User    @relation(fields: [uploaderId], references: [id])
+  filename         String
+  originalFilename String
+  s3Key            String
+  s3ThumbnailKey   String?
+  s3PreviewKey     String?
+  mimeType         String
+  fileSize         Int
+  width            Int?
+  height           Int?
+  isVideo          Boolean @default(false)
+  duration         Float? // for videos in seconds
+
+  // Metadata
+  photographerName String?
+  captureTime      DateTime?
+  fStop            Float?
+  shutterSpeed     String?
+  iso              Int?
+  focalLength      Float? // in mm
+  cameraModel      String?
+  lens             String?
+  latitude         Float?
+  longitude        Float?
+
+  // AI Processing
+  aiCaption      String?   @db.Text
+  aiTags         String[]
+  aiPeopleCount  Int?
+  aiVisibleNames String[]
+  aiShotType     String? // panel, individual_speaker, crowd, stage, networking, presentation, other
+  processedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  collectionItems CollectionItem[]
+  publishLogs     PublishLog[]
+
+  @@index([eventId])
+  @@index([eventId, createdAt])
+  // Browse's default sort is captureTime DESC scoped to an event; this composite
+  // covers it so the query doesn't scan + sort the whole event's media.
+  @@index([eventId, captureTime])
+  @@index([eventId, processedAt])
+  @@index([uploaderId])
+  @@index([captureTime])
+  @@index([photographerName])
+  @@index([aiShotType])
+  @@index([aiTags(ops: ArrayOps)], type: Gin)
+  @@index([aiVisibleNames(ops: ArrayOps)], type: Gin)
+}
+
+model Collection {
+  id          String           @id @default(cuid())
+  name        String
+  description String?
+  eventId     String
+  event       Event            @relation(fields: [eventId], references: [id])
+  createdById String
+  createdBy   User             @relation(fields: [createdById], references: [id])
+  isPublic    Boolean          @default(false)
+  isSmart     Boolean          @default(false)
+  filters     Json? // saved MediaFilters for smart collections
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  items       CollectionItem[]
+  publishLogs PublishLog[]
+
+  @@index([eventId])
+  @@index([createdById])
+}
+
+model CollectionItem {
+  id           String     @id @default(cuid())
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  mediaId      String
+  media        Media      @relation(fields: [mediaId], references: [id])
+  orderIndex   Int
+  addedAt      DateTime   @default(now())
+
+  @@unique([collectionId, mediaId])
+  @@index([collectionId])
+}
+
+model PublishLog {
+  id            String      @id @default(cuid())
+  mediaId       String?
+  media         Media?      @relation(fields: [mediaId], references: [id])
+  collectionId  String?
+  collection    Collection? @relation(fields: [collectionId], references: [id])
+  publishedById String
+  publishedBy   User        @relation(fields: [publishedById], references: [id])
+  destination   String // facebook, instagram, bluesky, file_export, etc
+  destDetails   Json? // platform-specific details
+  publishedAt   DateTime    @default(now())
+  success       Boolean
+  errorMessage  String?
+
+  @@index([mediaId])
+  @@index([collectionId])
+  @@index([publishedAt])
+  @@index([publishedById])
+}
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  // Keys will include:
+  // - image_sizes (array of sizes to generate)
+  // - facebook_auth (OAuth tokens)
+  // - instagram_auth (OAuth tokens)
+  // - bluesky_auth (credentials)
+  // - watermark_settings
+  // - file_naming_templates
+}

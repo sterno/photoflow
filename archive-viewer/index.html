@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PhotoFlow Archive</title>
+    <!--
+      manifest.js is generated per-archive by the exporter and assigns
+      window.__PHOTOFLOW_MANIFEST__. The viewer reads from that global
+      because fetch() doesn't work from file:// in most browsers, so a JSON
+      file would be unreadable when the archive is opened directly off disk.
+    -->
+    <script src="./manifest.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
