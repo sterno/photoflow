@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { hashPassword, verifyPassword } from '@/lib/auth';
+import { hashPassword, verifyPassword, hasClientPermission } from '@/lib/auth';
+import { ClientRole } from '@/generated/prisma/client';
 
 /**
  * Tests for the bcrypt-backed password helpers in `src/lib/auth.ts`.
@@ -70,5 +71,32 @@ describe('verifyPassword', () => {
     const hash = await hashPassword(password);
     expect(await verifyPassword(password, hash)).toBe(true);
     expect(await verifyPassword('passwörd 🔒', hash)).toBe(false);
+  });
+});
+
+/**
+ * Tests for `hasClientPermission` — the per-client analogue of hasPermission.
+ * The client role hierarchy is CLIENT_ADMIN (3) > PUBLISHER (2) > SUBSCRIBER (1),
+ * and the check is `weight(role) >= weight(required)`. We exercise every ordered
+ * pair (equal / higher / lower) so the comparison and every hierarchy branch are
+ * fully covered. Real implementation, no mocks.
+ */
+describe('hasClientPermission', () => {
+  it('is true when the role equals the requirement', () => {
+    expect(hasClientPermission(ClientRole.CLIENT_ADMIN, ClientRole.CLIENT_ADMIN)).toBe(true);
+    expect(hasClientPermission(ClientRole.PUBLISHER, ClientRole.PUBLISHER)).toBe(true);
+    expect(hasClientPermission(ClientRole.SUBSCRIBER, ClientRole.SUBSCRIBER)).toBe(true);
+  });
+
+  it('is true when the role exceeds the requirement', () => {
+    expect(hasClientPermission(ClientRole.CLIENT_ADMIN, ClientRole.PUBLISHER)).toBe(true);
+    expect(hasClientPermission(ClientRole.CLIENT_ADMIN, ClientRole.SUBSCRIBER)).toBe(true);
+    expect(hasClientPermission(ClientRole.PUBLISHER, ClientRole.SUBSCRIBER)).toBe(true);
+  });
+
+  it('is false when the role is below the requirement', () => {
+    expect(hasClientPermission(ClientRole.SUBSCRIBER, ClientRole.PUBLISHER)).toBe(false);
+    expect(hasClientPermission(ClientRole.SUBSCRIBER, ClientRole.CLIENT_ADMIN)).toBe(false);
+    expect(hasClientPermission(ClientRole.PUBLISHER, ClientRole.CLIENT_ADMIN)).toBe(false);
   });
 });

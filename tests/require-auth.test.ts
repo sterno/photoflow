@@ -19,19 +19,30 @@
  * actual role hierarchy.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserRole } from '@/generated/prisma/client';
+import { UserRole, ClientRole } from '@/generated/prisma/client';
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }));
 vi.mock('@/lib/prisma', () => ({
-  prisma: { user: { findUnique: vi.fn() } },
+  prisma: {
+    user: { findUnique: vi.fn() },
+    clientMembership: { findUnique: vi.fn() },
+  },
 }));
+vi.mock('@/lib/active-client', () => ({ resolveActiveClientId: vi.fn() }));
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
+import { resolveActiveClientId } from '@/lib/active-client';
+import {
+  requireAuth,
+  requireClientAccess,
+  requireClientAdminFor,
+} from '@/lib/require-auth';
 
 const authMock = vi.mocked(auth);
 const findUserMock = vi.mocked(prisma.user.findUnique);
+const findMembershipMock = vi.mocked(prisma.clientMembership.findUnique);
+const resolveActiveClientIdMock = vi.mocked(resolveActiveClientId);
 
 function makeSession(overrides: Partial<{ id: string; username: string; role: UserRole }> = {}) {
   return {
@@ -175,5 +186,198 @@ describe('requireAuth', () => {
     findUserMock.mockResolvedValueOnce({ id: 'usr_1', role: UserRole.ADMIN } as never);
     const result = await requireAuth(UserRole.SUBSCRIBER);
     expect(result.user?.role).toBe(UserRole.ADMIN);
+  });
+});
+
+/**
+ * `requireClientAccess(minClientRole?)` layers a client-scoped check on top of
+ * `requireAuth`: it resolves the active client (cookie / first accessible),
+ * reads the caller's live membership, and optionally enforces a minimum client
+ * role. A global super-admin (UserRole.ADMIN) bypasses the membership lookup
+ * entirely and is treated as CLIENT_ADMIN.
+ *
+ * `requireAuth`, `resolveActiveClientId`, and `prisma` are mocked;
+ * `hasClientPermission` (from `@/lib/auth`) runs for real so the client-role
+ * hierarchy is exercised end to end.
+ */
+describe('requireClientAccess', () => {
+  beforeEach(() => {
+    authMock.mockReset();
+    findUserMock.mockReset();
+    findMembershipMock.mockReset();
+    resolveActiveClientIdMock.mockReset();
+  });
+
+  it('returns the 401 response straight from requireAuth when unauthenticated', async () => {
+    authMock.mockResolvedValueOnce(null as never);
+    const result = await requireClientAccess();
+    expect(result.ctx).toBeUndefined();
+    expect(result.response!.status).toBe(401);
+    await expect(result.response!.json()).resolves.toEqual({ error: 'Unauthorized' });
+    expect(resolveActiveClientIdMock).not.toHaveBeenCalled();
+    expect(findMembershipMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a 400 response when no active client resolves', async () => {
+    authMock.mockResolvedValueOnce(
+      makeSession({ role: UserRole.SUBSCRIBER }) as never,
+    );
+    findUserMock.mockResolvedValueOnce({ id: 'usr_1', role: UserRole.SUBSCRIBER } as never);
+    resolveActiveClientIdMock.mockResolvedValueOnce(null);
+    const result = await requireClientAccess();
+    expect(result.ctx).toBeUndefined();
+    expect(result.response!.status).toBe(400);
+    await expect(result.response!.json()).resolves.toEqual({ error: 'No client selected' });
+    expect(findMembershipMock).not.toHaveBeenCalled();
+  });
+
+  it('treats a global super-admin as CLIENT_ADMIN without a membership lookup', async () => {
+    authMock.mockResolvedValueOnce(
+      makeSession({ id: 'usr_admin', username: 'root', role: UserRole.ADMIN }) as never,
+    );
+    findUserMock.mockResolvedValueOnce({ id: 'usr_admin', role: UserRole.ADMIN } as never);
+    resolveActiveClientIdMock.mockResolvedValueOnce('cli_1');
+    const result = await requireClientAccess(ClientRole.CLIENT_ADMIN);
+    expect(result.response).toBeUndefined();
+    expect(result.ctx).toEqual({
+      id: 'usr_admin',
+      username: 'root',
+      role: UserRole.ADMIN,
+      clientId: 'cli_1',
+      clientRole: 'CLIENT_ADMIN',
+      isSuperAdmin: true,
+    });
+    expect(findMembershipMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the ctx for a member whose client role meets the requirement', async () => {
+    authMock.mockResolvedValueOnce(
+      makeSession({ id: 'usr_2', username: 'mia', role: UserRole.PUBLISHER }) as never,
+    );
+    findUserMock.mockResolvedValueOnce({ id: 'usr_2', role: UserRole.PUBLISHER } as never);
+    resolveActiveClientIdMock.mockResolvedValueOnce('cli_9');
+    findMembershipMock.mockResolvedValueOnce({ role: ClientRole.PUBLISHER } as never);
+    const result = await requireClientAccess(ClientRole.SUBSCRIBER);
+    expect(result.response).toBeUndefined();
+    expect(result.ctx).toEqual({
+      id: 'usr_2',
+      username: 'mia',
+      role: UserRole.PUBLISHER,
+      clientId: 'cli_9',
+      clientRole: ClientRole.PUBLISHER,
+      isSuperAdmin: false,
+    });
+    expect(findMembershipMock).toHaveBeenCalledWith({
+      where: { userId_clientId: { userId: 'usr_2', clientId: 'cli_9' } },
+      select: { role: true },
+    });
+  });
+
+  it('returns a 403 response when the member is below the required client role', async () => {
+    authMock.mockResolvedValueOnce(
+      makeSession({ id: 'usr_3', role: UserRole.SUBSCRIBER }) as never,
+    );
+    findUserMock.mockResolvedValueOnce({ id: 'usr_3', role: UserRole.SUBSCRIBER } as never);
+    resolveActiveClientIdMock.mockResolvedValueOnce('cli_9');
+    findMembershipMock.mockResolvedValueOnce({ role: ClientRole.SUBSCRIBER } as never);
+    const result = await requireClientAccess(ClientRole.CLIENT_ADMIN);
+    expect(result.ctx).toBeUndefined();
+    expect(result.response!.status).toBe(403);
+    await expect(result.response!.json()).resolves.toEqual({ error: 'Forbidden' });
+  });
+
+  it('returns a 403 response when the caller is not a member of the client', async () => {
+    authMock.mockResolvedValueOnce(
+      makeSession({ id: 'usr_4', role: UserRole.SUBSCRIBER }) as never,
+    );
+    findUserMock.mockResolvedValueOnce({ id: 'usr_4', role: UserRole.SUBSCRIBER } as never);
+    resolveActiveClientIdMock.mockResolvedValueOnce('cli_9');
+    findMembershipMock.mockResolvedValueOnce(null as never);
+    const result = await requireClientAccess();
+    expect(result.ctx).toBeUndefined();
+    expect(result.response!.status).toBe(403);
+    await expect(result.response!.json()).resolves.toEqual({ error: 'Forbidden' });
+  });
+});
+
+/**
+ * `requireClientAdminFor(clientId)` gates management of a SPECIFIC client by id,
+ * independent of the active-client cookie. A global super-admin passes, as does
+ * a CLIENT_ADMIN of exactly that client; everyone else gets a 403.
+ */
+describe('requireClientAdminFor', () => {
+  beforeEach(() => {
+    authMock.mockReset();
+    findUserMock.mockReset();
+    findMembershipMock.mockReset();
+  });
+
+  it('returns the 401 response straight from requireAuth when unauthenticated', async () => {
+    authMock.mockResolvedValueOnce(null as never);
+    const result = await requireClientAdminFor('cli_1');
+    expect(result.user).toBeUndefined();
+    expect(result.response!.status).toBe(401);
+    await expect(result.response!.json()).resolves.toEqual({ error: 'Unauthorized' });
+    expect(findMembershipMock).not.toHaveBeenCalled();
+  });
+
+  it('passes a global super-admin without a membership lookup', async () => {
+    authMock.mockResolvedValueOnce(
+      makeSession({ id: 'usr_admin', username: 'root', role: UserRole.ADMIN }) as never,
+    );
+    findUserMock.mockResolvedValueOnce({ id: 'usr_admin', role: UserRole.ADMIN } as never);
+    const result = await requireClientAdminFor('cli_1');
+    expect(result.response).toBeUndefined();
+    expect(result.isSuperAdmin).toBe(true);
+    expect(result.user).toEqual({
+      id: 'usr_admin',
+      username: 'root',
+      role: UserRole.ADMIN,
+    });
+    expect(findMembershipMock).not.toHaveBeenCalled();
+  });
+
+  it('passes a CLIENT_ADMIN member of the target client', async () => {
+    authMock.mockResolvedValueOnce(
+      makeSession({ id: 'usr_5', username: 'cam', role: UserRole.PUBLISHER }) as never,
+    );
+    findUserMock.mockResolvedValueOnce({ id: 'usr_5', role: UserRole.PUBLISHER } as never);
+    findMembershipMock.mockResolvedValueOnce({ role: ClientRole.CLIENT_ADMIN } as never);
+    const result = await requireClientAdminFor('cli_7');
+    expect(result.response).toBeUndefined();
+    expect(result.isSuperAdmin).toBe(false);
+    expect(result.user).toEqual({
+      id: 'usr_5',
+      username: 'cam',
+      role: UserRole.PUBLISHER,
+    });
+    expect(findMembershipMock).toHaveBeenCalledWith({
+      where: { userId_clientId: { userId: 'usr_5', clientId: 'cli_7' } },
+      select: { role: true },
+    });
+  });
+
+  it('returns a 403 response for a non-admin member of the target client', async () => {
+    authMock.mockResolvedValueOnce(
+      makeSession({ id: 'usr_6', role: UserRole.PUBLISHER }) as never,
+    );
+    findUserMock.mockResolvedValueOnce({ id: 'usr_6', role: UserRole.PUBLISHER } as never);
+    findMembershipMock.mockResolvedValueOnce({ role: ClientRole.PUBLISHER } as never);
+    const result = await requireClientAdminFor('cli_7');
+    expect(result.user).toBeUndefined();
+    expect(result.response!.status).toBe(403);
+    await expect(result.response!.json()).resolves.toEqual({ error: 'Forbidden' });
+  });
+
+  it('returns a 403 response when the caller has no membership in the target client', async () => {
+    authMock.mockResolvedValueOnce(
+      makeSession({ id: 'usr_7', role: UserRole.SUBSCRIBER }) as never,
+    );
+    findUserMock.mockResolvedValueOnce({ id: 'usr_7', role: UserRole.SUBSCRIBER } as never);
+    findMembershipMock.mockResolvedValueOnce(null as never);
+    const result = await requireClientAdminFor('cli_7');
+    expect(result.user).toBeUndefined();
+    expect(result.response!.status).toBe(403);
+    await expect(result.response!.json()).resolves.toEqual({ error: 'Forbidden' });
   });
 });
