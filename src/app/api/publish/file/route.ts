@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server';
 import { Readable } from 'stream';
 import sharp from 'sharp';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
+import { requireClientAccess } from '@/lib/require-auth';
 import { getObjectStream } from '@/lib/s3';
 import { renderName, DEFAULT_TEMPLATE } from '@/lib/file-naming';
 import { validateExportLongEdge } from '@/lib/image-sizes';
@@ -47,7 +47,7 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
 
   const body = (await request.json()) as FileRequest;
@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
   }
   const quality = validateQuality(body.quality);
 
-  const media = await prisma.media.findUnique({
-    where: { id: mediaId },
+  const media = await prisma.media.findFirst({
+    where: { id: mediaId, event: { clientId: authResult.ctx.clientId } },
     include: { uploader: { select: { username: true, name: true } } },
   });
   if (!media) {
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     data: {
       mediaId: media.id,
       collectionId: collectionId || null,
-      publishedById: authResult.user.id,
+      publishedById: authResult.ctx.id,
       destination: 'file_export',
       destDetails: {
         template,

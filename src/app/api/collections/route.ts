@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidateTag, unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
+import { requireClientAccess } from '@/lib/require-auth';
 import { getActiveEvent } from '@/lib/active-event';
 import { parseMediaFilters } from '@/lib/media-filters';
 
@@ -41,14 +41,17 @@ function fetchEventCollections(eventId: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
+  const { clientId } = authResult.ctx;
 
   const eventIdParam = request.nextUrl.searchParams.get('eventId');
   // Caller may target a specific event; otherwise fall back to the active one.
+  // Scope the lookup to the active client so a forged eventId from another
+  // client can't surface that client's collections.
   const event = eventIdParam
-    ? await prisma.event.findUnique({ where: { id: eventIdParam } })
-    : await getActiveEvent();
+    ? await prisma.event.findFirst({ where: { id: eventIdParam, clientId } })
+    : await getActiveEvent(clientId);
   if (!event) return NextResponse.json({ collections: [] });
 
   // Visibility model: a user sees their own collections (regardless of
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
   // list, can't be opened, and can't be added to. Filtering happens here
   // rather than in the cached fetcher so users share the same bucket.
   const allCollections = await fetchEventCollections(event.id);
-  const userId = authResult.user.id;
+  const userId = authResult.ctx.id;
   const collections = allCollections.filter(
     (collection) => collection.isPublic || collection.createdById === userId,
   );
@@ -72,16 +75,19 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
+  const { clientId } = authResult.ctx;
 
   const body = await request.json();
   const { name, description, eventId, isSmart, filters, isPublic } = body;
   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 });
 
+  // Scope target-event resolution to the active client so a collection can't be
+  // created against another client's event.
   const event = eventId
-    ? await prisma.event.findUnique({ where: { id: eventId } })
-    : await getActiveEvent();
+    ? await prisma.event.findFirst({ where: { id: eventId, clientId } })
+    : await getActiveEvent(clientId);
   if (!event) return NextResponse.json({ error: 'No event available' }, { status: 400 });
 
   const isSmartCollection = Boolean(isSmart);
@@ -100,7 +106,7 @@ export async function POST(request: NextRequest) {
       name,
       description: description || null,
       eventId: event.id,
-      createdById: authResult.user.id,
+      createdById: authResult.ctx.id,
       isSmart: isSmartCollection,
       isPublic: Boolean(isPublic), // default private; opt-in to public on create
       // JSON round-trip strips undefined and yields a plain Prisma-Json value.

@@ -2,8 +2,8 @@
 // DELETE /api/admin/events/[id]/archive/[jobId]
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
-import { ArchiveJobStatus, UserRole } from '@/generated/prisma/client';
+import { requireClientAccess } from '@/lib/require-auth';
+import { ArchiveJobStatus, ClientRole } from '@/generated/prisma/client';
 import { deleteFromS3 } from '@/lib/s3';
 
 /**
@@ -15,12 +15,16 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string; jobId: string }> },
 ) {
-  const authResult = await requireAuth(UserRole.ADMIN);
+  const authResult = await requireClientAccess(ClientRole.CLIENT_ADMIN);
   if (authResult.response) return authResult.response;
 
   const { id: eventId, jobId } = await params;
-  const job = await prisma.archiveJob.findUnique({ where: { id: jobId } });
-  if (!job || job.eventId !== eventId) {
+  const job = await prisma.archiveJob.findUnique({
+    where: { id: jobId },
+    include: { event: { select: { clientId: true } } },
+  });
+  // 404 unless the job is for this event AND that event is in the active client.
+  if (!job || job.eventId !== eventId || job.event.clientId !== authResult.ctx.clientId) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }
   if (

@@ -71,9 +71,18 @@ export type ManifestCollection = {
   createdAt: string;
 };
 
+export type ManifestClient = {
+  id: string;
+  name: string;
+};
+
 export type Manifest = {
   schemaVersion: 1;
   generatedAt: string;
+  // Owning client (provenance). Optional: archives built before multi-client
+  // have no client. The offline viewer is single-client by nature, so this is
+  // display-only — there is no client-scoped filtering offline.
+  client?: ManifestClient;
   event: ManifestEvent;
   assetBase: string;
   photographers: string[];

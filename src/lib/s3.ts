@@ -1,22 +1,34 @@
 /**
- * AWS S3 client and helpers for PhotoFlow media storage.
+ * S3 client and helpers for PhotoFlow media storage — AWS S3 by default, or
+ * any S3-compatible store (MinIO, R2, B2) via S3_ENDPOINT (see s3-config.ts).
  * All event media (originals, thumbnails, previews) lives in a single bucket
  * under `events/<id>/<type>/...`. Server-only — never import from a client
  * component, as the SDK pulls in Node-only deps and uses raw credentials.
  */
 import 'server-only';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectsCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
 import { attachmentContentDisposition } from '@/lib/content-disposition';
+import { buildS3ClientConfig, hasDistinctPublicEndpoint } from '@/lib/s3-config';
 
-export const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-  },
-});
+export const s3Client = new S3Client(buildS3ClientConfig());
+
+// Presigned URLs are fetched by browsers, so when the server reaches the
+// store over a private hostname (S3_PUBLIC_ENDPOINT set), signing must happen
+// against the public host — SigV4 signatures bind to it.
+const presignClient = hasDistinctPublicEndpoint()
+  ? new S3Client(buildS3ClientConfig({ forPresigning: true }))
+  : s3Client;
 
 export const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'photoflow-media';
 
@@ -34,6 +46,64 @@ export async function uploadToS3(
   });
 
   await s3Client.send(command);
+}
+
+/**
+ * Multipart-upload helpers for large direct-to-S3 uploads (e.g. import
+ * bundles). The browser uploads each part straight to S3 via a presigned URL —
+ * bytes never pass through the app server, so there's no body-size ceiling.
+ * Flow: createMultipartUpload → presignUploadPart (×N) → browser PUTs parts →
+ * completeMultipartUpload (or abortMultipartUpload on cancel/failure).
+ */
+export async function createMultipartUpload(key: string, contentType: string): Promise<string> {
+  const res = await s3Client.send(
+    new CreateMultipartUploadCommand({ Bucket: BUCKET_NAME, Key: key, ContentType: contentType }),
+  );
+  if (!res.UploadId) throw new Error('S3 did not return an UploadId');
+  return res.UploadId;
+}
+
+/**
+ * Presigned PUT URL for one part. Signed against the public endpoint when one
+ * is configured (same rationale as getSignedDownloadUrl). The browser must be
+ * able to read the `ETag` response header per part, so the bucket's CORS config
+ * needs PUT allowed and `ETag` in ExposeHeaders.
+ */
+export async function presignUploadPart(
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  expiresIn = 60 * 60,
+): Promise<string> {
+  const command = new UploadPartCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    UploadId: uploadId,
+    PartNumber: partNumber,
+  });
+  return getSignedUrl(presignClient, command, { expiresIn });
+}
+
+export async function completeMultipartUpload(
+  key: string,
+  uploadId: string,
+  parts: { PartNumber: number; ETag: string }[],
+): Promise<void> {
+  await s3Client.send(
+    new CompleteMultipartUploadCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      UploadId: uploadId,
+      // S3 requires parts ordered ascending by PartNumber.
+      MultipartUpload: { Parts: [...parts].sort((a, b) => a.PartNumber - b.PartNumber) },
+    }),
+  );
+}
+
+export async function abortMultipartUpload(key: string, uploadId: string): Promise<void> {
+  await s3Client.send(
+    new AbortMultipartUploadCommand({ Bucket: BUCKET_NAME, Key: key, UploadId: uploadId }),
+  );
 }
 
 /**
@@ -65,7 +135,7 @@ export async function getSignedDownloadUrl(
   // details without re-signing; short enough that a leaked URL (browser
   // history, log entry, link shared accidentally) becomes useless quickly.
   // Was 24h before PR 3 — that window was a footgun.
-  return await getSignedUrl(s3Client, command, { expiresIn: 60 * 60 });
+  return await getSignedUrl(presignClient, command, { expiresIn: 60 * 60 });
 }
 
 /**

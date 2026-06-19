@@ -8,17 +8,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
-import { UserRole } from '@/generated/prisma/client';
+import { requireClientAccess } from '@/lib/require-auth';
+import { ClientRole } from '@/generated/prisma/client';
 import { deleteFromS3 } from '@/lib/s3';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(UserRole.ADMIN);
+  const authResult = await requireClientAccess(ClientRole.CLIENT_ADMIN);
   if (authResult.response) return authResult.response;
+  const { clientId } = authResult.ctx;
 
   const { id } = await params;
 
-  const event = await prisma.event.findUnique({ where: { id }, select: { id: true, name: true } });
+  // Scope to the active client; another client's event is a 404.
+  const event = await prisma.event.findFirst({
+    where: { id, clientId },
+    select: { id: true, name: true },
+  });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
@@ -68,7 +73,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   // Both the events list (media counts) and the per-event name cache are now
   // stale for this event.
-  revalidateTag('events:list', 'minutes');
+  revalidateTag(`events:list:${clientId}`, 'minutes');
   revalidateTag(`photos:names:${event.id}`, 'minutes');
   return NextResponse.json({
     deletedMedia: deletedMediaCount,

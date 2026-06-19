@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSignedDownloadUrl } from '@/lib/s3';
-import { requireAuth } from '@/lib/require-auth';
+import { requireClientAccess } from '@/lib/require-auth';
 import { getActiveEvent } from '@/lib/active-event';
 import { buildMediaWhere, parseMediaFilters } from '@/lib/media-filters';
 
@@ -19,7 +19,7 @@ import { buildMediaWhere, parseMediaFilters } from '@/lib/media-filters';
  */
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAuth();
+    const authResult = await requireClientAccess();
     if (authResult.response) return authResult.response;
 
     const searchParams = request.nextUrl.searchParams;
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       focalLength: searchParams.get('focalLength'),
     });
 
-    const event = await getActiveEvent();
+    const event = await getActiveEvent(authResult.ctx.clientId);
     if (!event) return NextResponse.json({ photos: [] });
 
     // buildMediaWhere returns null when filters are inherently empty (e.g.

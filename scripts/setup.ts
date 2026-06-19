@@ -1,10 +1,34 @@
 import 'dotenv/config';
-import { PrismaNeon } from '@prisma/adapter-neon';
+import { S3Client, HeadBucketCommand, CreateBucketCommand } from '@aws-sdk/client-s3';
+import { createDbAdapter } from '../src/lib/db-adapter';
+import { buildS3ClientConfig } from '../src/lib/s3-config';
 import { PrismaClient, UserRole } from '../src/generated/prisma/client';
 import bcrypt from 'bcryptjs';
 
-const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient({ adapter: createDbAdapter() });
+
+/**
+ * Create the media bucket if it doesn't exist — only when a custom
+ * S3-compatible endpoint is configured (MinIO in Docker Compose / Railway).
+ * Never auto-create on real AWS: a typo'd bucket name there should fail
+ * loudly, not silently create a bucket in the wrong account/region.
+ */
+async function ensureBucket(): Promise<void> {
+  if (!process.env.S3_ENDPOINT && !process.env.AWS_ENDPOINT_URL_S3) return;
+  const bucket = process.env.AWS_S3_BUCKET || 'photoflow-media';
+  const s3 = new S3Client(buildS3ClientConfig());
+  try {
+    try {
+      await s3.send(new HeadBucketCommand({ Bucket: bucket }));
+      console.log(`Bucket "${bucket}" already exists`);
+    } catch {
+      await s3.send(new CreateBucketCommand({ Bucket: bucket }));
+      console.log(`Created bucket "${bucket}"`);
+    }
+  } finally {
+    s3.destroy();
+  }
+}
 
 /**
  * Read a required env var or fail with a clear message. We refuse to seed a
@@ -30,6 +54,20 @@ function requireEnv(name: string): string {
 async function main() {
   console.log('Setting up PhotoFlow database...');
 
+  // Cheap and idempotent — safe to run every boot, also covers a later
+  // switch to a different S3-compatible endpoint.
+  await ensureBucket();
+
+  // The entrypoint runs this script on every container boot. Once an admin
+  // exists the instance is considered initialized — bail before touching
+  // anything else, or the systemConfig upserts below would clobber settings
+  // the admin has since customized.
+  const adminCount = await prisma.user.count({ where: { role: UserRole.ADMIN } });
+  if (adminCount > 0) {
+    console.log('Admin user already exists — skipping bootstrap.');
+    return;
+  }
+
   const adminUsername = requireEnv('ADMIN_USERNAME');
   const adminPassword = requireEnv('ADMIN_PASSWORD');
   if (adminPassword.length < 12) {
@@ -53,6 +91,28 @@ async function main() {
 
   console.log('Created admin user:', admin.username);
 
+  // A Client must exist before any Event (Event.clientId is required). Seed a
+  // single default client that owns the default event; the bootstrap admin is a
+  // global super-admin (implicit access everywhere) but also gets a CLIENT_ADMIN
+  // membership so the default client shows up in the membership UI.
+  const client = await prisma.client.upsert({
+    where: { id: 'default-client' },
+    update: {},
+    create: {
+      id: 'default-client',
+      name: 'Default Client',
+      slug: 'default',
+    },
+  });
+
+  console.log('Created default client:', client.name);
+
+  await prisma.clientMembership.upsert({
+    where: { userId_clientId: { userId: admin.id, clientId: client.id } },
+    update: {},
+    create: { userId: admin.id, clientId: client.id, role: 'CLIENT_ADMIN' },
+  });
+
   const event = await prisma.event.upsert({
     where: { id: 'default' },
     update: {},
@@ -62,6 +122,7 @@ async function main() {
       description: 'Default event for PhotoFlow',
       startDate: new Date(),
       isActive: true,
+      clientId: client.id,
     },
   });
 

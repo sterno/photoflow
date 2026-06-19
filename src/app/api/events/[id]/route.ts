@@ -8,17 +8,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
-import { UserRole } from '@/generated/prisma/client';
+import { requireClientAccess } from '@/lib/require-auth';
+import { ClientRole } from '@/generated/prisma/client';
 import { validateImageSizes } from '@/lib/image-sizes';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
 
   const { id } = await params;
-  const event = await prisma.event.findUnique({
-    where: { id },
+  const event = await prisma.event.findFirst({
+    where: { id, clientId: authResult.ctx.clientId },
     include: { _count: { select: { media: true, collections: true } } },
   });
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -26,10 +26,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(UserRole.ADMIN);
+  const authResult = await requireClientAccess(ClientRole.CLIENT_ADMIN);
   if (authResult.response) return authResult.response;
+  const { clientId } = authResult.ctx;
 
   const { id } = await params;
+  // Scope the edit to the active client: an event in another client is a 404.
+  const target = await prisma.event.findFirst({ where: { id, clientId }, select: { id: true } });
+  if (!target) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const body = await request.json();
   // Build a sparse update payload so absent fields stay untouched. The
   // `'field' in body` check (vs. truthiness) lets callers explicitly clear
@@ -56,15 +60,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const event = await prisma.event.update({ where: { id }, data: updateData });
-  revalidateTag('events:list', 'minutes');
+  revalidateTag(`events:list:${clientId}`, 'minutes');
   return NextResponse.json({ event });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(UserRole.ADMIN);
+  const authResult = await requireClientAccess(ClientRole.CLIENT_ADMIN);
   if (authResult.response) return authResult.response;
+  const { clientId } = authResult.ctx;
 
   const { id } = await params;
+  // Scope to the active client; another client's event is a 404.
+  const target = await prisma.event.findFirst({ where: { id, clientId }, select: { id: true } });
+  if (!target) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   // Refuse to delete events that still own media — forces the caller to use
   // the explicit purge endpoint, which also cleans up S3 objects.
   const mediaCount = await prisma.media.count({ where: { eventId: id } });
@@ -75,6 +83,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     );
   }
   await prisma.event.delete({ where: { id } });
-  revalidateTag('events:list', 'minutes');
+  revalidateTag(`events:list:${clientId}`, 'minutes');
   return NextResponse.json({ success: true });
 }

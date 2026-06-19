@@ -4,9 +4,11 @@
 // are currently in publisher or subscriber "mode" — the same user can flip
 // between the two during an event via the badge on the right.
 
+import { useEffect, useState } from 'react';
 import { Navbar, Nav, Container, Dropdown, Badge } from 'react-bootstrap';
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
+import ClientSwitcher from '@/components/ClientSwitcher';
 
 export default function Navigation() {
   const router = useRouter();
@@ -15,6 +17,30 @@ export default function Navigation() {
   const user = session?.user
     ? { username: session.user.username, role: session.user.role as string }
     : null;
+
+  // The Admin link is visible to global super-admins AND to client-admins (who
+  // manage their own client). Client-admin status isn't in the JWT, so derive
+  // it from the accessible-client list, which carries the per-client role.
+  const [isClientAdminSomewhere, setIsClientAdminSomewhere] = useState(false);
+  useEffect(() => {
+    if (!session?.user) return;
+    let cancelled = false;
+    void fetch('/api/clients')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const anyAdmin = (data.clients ?? []).some(
+          (c: { role: string }) => c.role === 'CLIENT_ADMIN',
+        );
+        setIsClientAdminSomewhere(anyAdmin);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user]);
+
+  const canAdmin = user?.role === 'ADMIN' || isClientAdminSomewhere;
 
   // Mode is derived from the URL rather than stored state — switching modes is
   // just a navigation, so a hard refresh or shared link always lands correctly.
@@ -79,6 +105,10 @@ export default function Navigation() {
           </Nav>
           
           <Nav>
+            <Nav.Item className="d-flex align-items-center">
+              <ClientSwitcher />
+            </Nav.Item>
+
             {canPublish && (
               <Nav.Item className="me-3">
                 <Badge 
@@ -93,7 +123,7 @@ export default function Navigation() {
               </Nav.Item>
             )}
             
-            {user?.role === 'ADMIN' && (
+            {canAdmin && (
               <Nav.Link href="/admin" className="me-3">
                 Admin
               </Nav.Link>

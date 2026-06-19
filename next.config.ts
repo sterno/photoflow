@@ -22,12 +22,16 @@ const nextConfig: NextConfig = {
   // runtime and React Bootstrap rely on inline styles/scripts; tightening to a
   // nonce-based policy is a worthwhile follow-up. img-src/media-src allow https:
   // so presigned S3 URLs (whose host varies by bucket/region) load without
-  // hardcoding a bucket origin.
+  // hardcoding a bucket origin — plus http: for self-hosted stacks serving
+  // MinIO without TLS (localhost / LAN). That's safe to allow globally: on an
+  // https deployment the browser's mixed-content blocking already forbids
+  // http subresources, so the relaxation only applies where the app itself
+  // is served over http.
   async headers() {
     const csp = [
       "default-src 'self'",
-      "img-src 'self' https: data: blob:",
-      "media-src 'self' https: data: blob:",
+      "img-src 'self' https: http: data: blob:",
+      "media-src 'self' https: http: data: blob:",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "font-src 'self' data:",

@@ -5,15 +5,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { deleteFromS3 } from '@/lib/s3';
-import { requireAuth } from '@/lib/require-auth';
-import { UserRole } from '@/generated/prisma/client';
+import { requireClientAccess } from '@/lib/require-auth';
 
 // Bulk delete media. Body: { ids: string[] }.
 //
-// Permission rules:
-//   - ADMIN can delete any media.
+// Permission rules (within the active client):
+//   - CLIENT_ADMIN (and global super-admin) can delete any media.
 //   - PUBLISHER can delete only media they uploaded.
-//   - SUBSCRIBER (and below) cannot delete.
+//   - SUBSCRIBER cannot delete.
 //
 // If any requested id is not deletable by the caller, the entire request is
 // rejected (status 403) — we don't want a "partial success" surprise where
@@ -29,11 +28,12 @@ import { UserRole } from '@/generated/prisma/client';
 // do NOT fail the response — the DB rows are gone and the user shouldn't see
 // the photos resurrect because an S3 key wouldn't clean up.
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
-  const { user } = authResult;
+  const { ctx } = authResult;
 
-  if (user.role === UserRole.SUBSCRIBER || user.role === UserRole.PENDING) {
+  // SUBSCRIBER is read-only; PUBLISHER and CLIENT_ADMIN may delete.
+  if (ctx.clientRole === 'SUBSCRIBER') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -55,8 +55,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Too many ids (max 1000)' }, { status: 400 });
   }
 
+  // Scope to the active client via the event relation: ids belonging to another
+  // client are simply not found here, so they can never be deleted cross-tenant.
   const media = await prisma.media.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, event: { clientId: ctx.clientId } },
     select: {
       id: true,
       uploaderId: true,
@@ -70,10 +72,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ deleted: 0, s3Errors: [] });
   }
 
-  if (user.role !== UserRole.ADMIN) {
+  if (ctx.clientRole !== 'CLIENT_ADMIN') {
     // Publishers may only delete their own uploads. Reject the whole batch
     // if any id belongs to someone else (no partial deletes — see file doc).
-    const foreignRow = media.find((m) => m.uploaderId !== user.id);
+    const foreignRow = media.find((m) => m.uploaderId !== ctx.id);
     if (foreignRow) {
       return NextResponse.json(
         { error: 'You can only delete photos you uploaded' },

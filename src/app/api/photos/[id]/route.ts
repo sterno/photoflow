@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSignedDownloadUrl } from '@/lib/s3';
-import { requireAuth } from '@/lib/require-auth';
+import { requireClientAccess } from '@/lib/require-auth';
 
 /**
  * GET /api/photos/[id] — fetch a single media item with signed S3 URLs.
@@ -22,13 +22,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authResult = await requireAuth();
+    const authResult = await requireClientAccess();
     if (authResult.response) return authResult.response;
 
     const { id } = await params;
 
-    const media = await prisma.media.findUnique({
-      where: { id },
+    // Scope to the active client via the event relation so a media id from
+    // another client can't be fetched cross-tenant.
+    const media = await prisma.media.findFirst({
+      where: { id, event: { clientId: authResult.ctx.clientId } },
       include: {
         uploader: {
           select: { username: true, name: true }

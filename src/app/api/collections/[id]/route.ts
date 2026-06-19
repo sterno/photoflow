@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
+import { requireClientAccess } from '@/lib/require-auth';
 import { getSignedDownloadUrl } from '@/lib/s3';
 import { buildMediaWhere, parseMediaFilters, summarizeFilters } from '@/lib/media-filters';
 
@@ -59,21 +59,27 @@ async function renderItem(media: MediaItemShape, itemId: string, orderIndex: num
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
+  const { clientId } = authResult.ctx;
 
   const { id } = await params;
   const collection = await prisma.collection.findUnique({
     where: { id },
     include: {
       createdBy: { select: { username: true, name: true } },
-      event: { select: { id: true, name: true } },
+      event: { select: { id: true, name: true, clientId: true } },
     },
   });
   if (!collection) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  // Cross-client isolation: a collection in another client is invisible (404)
+  // from the active client. Switch clients to reach it.
+  if (collection.event.clientId !== clientId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   // Hide private collections from non-owners. 404 (not 403) so we don't leak
   // the existence of someone else's private collection by id-guessing.
-  if (!collection.isPublic && collection.createdById !== authResult.user.id) {
+  if (!collection.isPublic && collection.createdById !== authResult.ctx.id) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -119,7 +125,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       // handle so accounts without a name still render something.
       createdBy: collection.createdBy.name || collection.createdBy.username,
       createdById: collection.createdById,
-      isOwner: collection.createdById === authResult.user.id,
+      isOwner: collection.createdById === authResult.ctx.id,
       isPublic: collection.isPublic,
       updatedAt: collection.updatedAt,
       isSmart: collection.isSmart,
@@ -131,20 +137,23 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
 
   const { id } = await params;
   const existing = await prisma.collection.findUnique({
     where: { id },
-    select: { createdById: true, isPublic: true },
+    select: { createdById: true, isPublic: true, event: { select: { clientId: true } } },
   });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  // Only the owner can edit. Normalize to 404 across the board (even for
-  // public collections) so the response shape doesn't reveal the
-  // public/private bit of someone else's collection — matches GET's
-  // leak-avoidance rationale.
-  if (existing.createdById !== authResult.user.id) {
+  // Only the owner can edit, and only within the active client. Normalize to
+  // 404 across the board (even for public/other-client collections) so the
+  // response shape doesn't reveal another collection's existence — matches
+  // GET's leak-avoidance rationale.
+  if (
+    existing.event.clientId !== authResult.ctx.clientId ||
+    existing.createdById !== authResult.ctx.id
+  ) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -167,17 +176,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
 
   const { id } = await params;
   const existing = await prisma.collection.findUnique({
     where: { id },
-    select: { createdById: true, isPublic: true, eventId: true },
+    select: { createdById: true, isPublic: true, eventId: true, event: { select: { clientId: true } } },
   });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  // Same normalize-to-404 rationale as PATCH/GET.
-  if (existing.createdById !== authResult.user.id) {
+  // Same normalize-to-404 rationale as PATCH/GET, including cross-client scope.
+  if (
+    existing.event.clientId !== authResult.ctx.clientId ||
+    existing.createdById !== authResult.ctx.id
+  ) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   await prisma.collection.delete({ where: { id } });

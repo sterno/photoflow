@@ -12,7 +12,9 @@
 #                   in builder if a future build step ever needs it.
 #
 # Runtime env vars (set in Railway's "Variables"):
-#   DATABASE_URL          — Neon pooled connection string (required)
+#   DATABASE_URL          — Postgres connection string (required). Neon URLs
+#                           get the serverless adapter, anything else the pg
+#                           pool (see src/lib/db-adapter.ts)
 #   NEXTAUTH_URL          — public URL of the deployed app
 #   NEXTAUTH_SECRET       — Auth.js session signing key
 #   ANTHROPIC_API_KEY     — for AI captioning (optional; AI auto-disables if missing)
@@ -20,6 +22,11 @@
 #   AWS_ACCESS_KEY_ID     — S3 IAM credentials
 #   AWS_SECRET_ACCESS_KEY
 #   AWS_S3_BUCKET         — S3 bucket name for media storage
+#   S3_ENDPOINT           — optional custom S3-compatible endpoint (MinIO/R2/B2)
+#   S3_PUBLIC_ENDPOINT    — optional browser-reachable endpoint for presigned
+#                           URLs when S3_ENDPOINT is a private hostname
+#   ADMIN_USERNAME        — with ADMIN_PASSWORD (12+ chars), seeds the first
+#   ADMIN_PASSWORD          admin user on first boot (idempotent)
 #   RESEND_API_KEY        — for password-reset and admin-notification emails
 #   RESEND_FROM_EMAIL     — sender address for system emails
 
@@ -80,6 +87,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/src/generated ./src/generated
+# Admin bootstrap: the entrypoint runs scripts/setup.ts (via tsx, already in
+# node_modules) when ADMIN_USERNAME/ADMIN_PASSWORD are set. The script uses
+# relative imports into src/lib, so bring just the files it needs.
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib/db-adapter.ts ./src/lib/db-adapter.ts
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib/s3-config.ts ./src/lib/s3-config.ts
 # Startup script (entrypoint) — applies pending migrations, then boots the
 # standalone server.
 COPY --chown=nextjs:nodejs ./docker-entrypoint.sh ./docker-entrypoint.sh

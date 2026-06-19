@@ -7,8 +7,8 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
-import { ArchiveJobStatus, UserRole } from '@/generated/prisma/client';
+import { requireClientAccess } from '@/lib/require-auth';
+import { ArchiveJobStatus, ClientRole } from '@/generated/prisma/client';
 import { getSignedDownloadUrl } from '@/lib/s3';
 import { archiveTempPath } from '@/server/archive/streamToZipToS3';
 import type { ArchiveOptions } from '@/server/archive/types';
@@ -27,13 +27,15 @@ import type { ArchiveOptions } from '@/server/archive/types';
  * download won't be killed by cleanup.
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(UserRole.ADMIN);
+  const authResult = await requireClientAccess(ClientRole.CLIENT_ADMIN);
   if (authResult.response) return authResult.response;
 
   const { id: eventId } = await params;
   const job = await prisma.archiveJob.findFirst({
     where: {
       eventId,
+      // Scope to the active client so a foreign event id yields no archive.
+      event: { clientId: authResult.ctx.clientId },
       status: { in: [ArchiveJobStatus.DONE, ArchiveJobStatus.RUNNING] },
     },
     orderBy: { createdAt: 'desc' },

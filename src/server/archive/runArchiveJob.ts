@@ -51,7 +51,8 @@ export async function runArchiveJob({ jobId }: { jobId: string }): Promise<void>
   try {
     const job = await prisma.archiveJob.findUnique({
       where: { id: jobId },
-      include: { event: true },
+      // Include the owning client so the manifest can record provenance.
+      include: { event: { include: { client: { select: { id: true, name: true } } } } },
     });
     if (!job) {
       console.error(`[archive] job ${jobId} not found`);

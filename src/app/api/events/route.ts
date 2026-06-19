@@ -7,40 +7,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidateTag, unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
-import { UserRole } from '@/generated/prisma/client';
+import { requireClientAccess } from '@/lib/require-auth';
+import { ClientRole } from '@/generated/prisma/client';
 
 /**
- * Cached event list. The result is shared across every authed user (no
- * per-user filtering), so a single bucket suffices. Tagged `events:list`;
- * every write path in /api/events/[id]/* calls revalidateTag('events:list', 'minutes')
+ * Cached event list for a single client. The result is shared across every
+ * authed user of that client (no per-user filtering), so one bucket per client
+ * suffices. Tagged `events:list:{clientId}`; every write path in
+ * /api/events/[id]/* and /activate calls revalidateTag for the event's client
  * so admin edits show up on the next read without waiting for the TTL.
  *
- * Keeping the DB call inside the cached function (and the auth check in the
- * GET handler) ensures we don't accidentally bake the session token into the
- * cache key.
+ * The bucket is keyed by clientId so one client's event list can never be
+ * served to another from cache.
  */
-const fetchAllEvents = unstable_cache(
-  async () =>
-    prisma.event.findMany({
-      orderBy: [{ isActive: 'desc' }, { startDate: 'desc' }],
-      include: { _count: { select: { media: true, collections: true } } },
-    }),
-  ['events:list'],
-  { tags: ['events:list'], revalidate: 300 },
-);
+function fetchClientEvents(clientId: string) {
+  return unstable_cache(
+    async () =>
+      prisma.event.findMany({
+        where: { clientId },
+        orderBy: [{ isActive: 'desc' }, { startDate: 'desc' }],
+        include: { _count: { select: { media: true, collections: true } } },
+      }),
+    ['events:list', clientId],
+    { tags: [`events:list:${clientId}`], revalidate: 300 },
+  )();
+}
 
 export async function GET() {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
 
-  const events = await fetchAllEvents();
+  const events = await fetchClientEvents(authResult.ctx.clientId);
   return NextResponse.json({ events });
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(UserRole.ADMIN);
+  // Creating/configuring events is a client-admin capability (super-admins pass).
+  const authResult = await requireClientAccess(ClientRole.CLIENT_ADMIN);
   if (authResult.response) return authResult.response;
+  const { clientId } = authResult.ctx;
 
   const body = await request.json();
   const { name, description, startDate, endDate, aiEnabled } = body;
@@ -55,12 +60,13 @@ export async function POST(request: NextRequest) {
       description: description || null,
       startDate: new Date(startDate),
       endDate: endDate ? new Date(endDate) : null,
+      clientId,
       // New events start inactive; admin promotes via /activate so the
-      // "exactly one active event" invariant stays explicit.
+      // "one active event per client" invariant stays explicit.
       isActive: false,
       aiEnabled: typeof aiEnabled === 'boolean' ? aiEnabled : true,
     },
   });
-  revalidateTag('events:list', 'minutes');
+  revalidateTag(`events:list:${clientId}`, 'minutes');
   return NextResponse.json({ event }, { status: 201 });
 }

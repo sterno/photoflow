@@ -14,12 +14,29 @@ enum UserRole {
   PENDING
 }
 
+// Per-client role, carried on ClientMembership. Deliberately a SEPARATE enum
+// from the global UserRole so the two axes can never be accidentally compared:
+// global UserRole.ADMIN is the instance super-admin, whereas CLIENT_ADMIN is
+// scoped to a single client.
+enum ClientRole {
+  CLIENT_ADMIN
+  PUBLISHER
+  SUBSCRIBER
+}
+
 enum ArchiveJobStatus {
   PENDING
   RUNNING
   DONE
   FAILED
   CANCELLED
+}
+
+enum MigrationJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
 }
 
 model User {
@@ -37,6 +54,65 @@ model User {
   passwordResetTokens PasswordResetToken[]
   filterPresets       FilterPreset[]
   archiveJobs         ArchiveJob[]
+  memberships         ClientMembership[]
+  migrationJobs       MigrationJob[]
+}
+
+// A Client sits above Events: one PhotoFlow instance serves many clients, each
+// owning many events. Users reach a client either through a ClientMembership or,
+// for global super-admins (UserRole.ADMIN), implicitly.
+model Client {
+  id            String             @id @default(cuid())
+  name          String
+  slug          String             @unique
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  events        Event[]
+  memberships   ClientMembership[]
+  migrationJobs MigrationJob[]
+}
+
+// Tracks an "import a standalone instance as a new client" run so the admin UI
+// can stream progress, mirroring ArchiveJob. The new client is created up front
+// and linked here; on success it owns the imported events/media.
+model MigrationJob {
+  id            String             @id @default(cuid())
+  status        MigrationJobStatus @default(PENDING)
+  requestedById String
+  requestedBy   User               @relation(fields: [requestedById], references: [id])
+  // The client being imported INTO (created when the job starts).
+  clientId      String?
+  client        Client?            @relation(fields: [clientId], references: [id])
+  sourceLabel   String? // human label from the bundle (e.g. source client name)
+  progressPct   Int                @default(0)
+  itemsTotal    Int                @default(0)
+  itemsDone     Int                @default(0)
+  stats         Json? // { events, media, collections, usersCreated, usersMerged }
+  errorMessage  String?            @db.Text
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Join between User and Client carrying the user's role within that client.
+// A user may belong to several clients with a different role in each.
+model ClientMembership {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId  String
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  role      ClientRole
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([userId, clientId])
+  @@index([clientId])
+  @@index([userId])
 }
 
 model FilterPreset {
@@ -75,11 +151,19 @@ model Event {
   isActive    Boolean      @default(true)
   aiEnabled   Boolean      @default(true)
   imageSizes  Json? // per-event override of global image-size config
+  clientId    String
+  client      Client       @relation(fields: [clientId], references: [id])
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   media       Media[]
   collections Collection[]
   archiveJobs ArchiveJob[]
+
+  @@index([clientId])
+  // Resolving a client's active event probes (clientId, isActive); the partial
+  // unique index "Event_one_active_per_client" (raw SQL in the migration)
+  // additionally enforces at most one active event PER client.
+  @@index([clientId, isActive])
 }
 
 model ArchiveJob {

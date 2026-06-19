@@ -6,10 +6,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
+import { requireClientAccess } from '@/lib/require-auth';
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
 
   const body = await request.json();
@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
   const logs = await prisma.publishLog.findMany({
     where: {
       mediaId: { in: mediaIds },
+      // Cross-client isolation: only count publishes whose media belongs to the
+      // active client, so forged ids from another client reveal nothing.
+      media: { event: { clientId: authResult.ctx.clientId } },
       success: true,
       ...(destination ? { destination } : {}),
     },

@@ -6,15 +6,21 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
+import { requireClientAccess } from '@/lib/require-auth';
 
 // Single fetch returns everything a write path needs: smart-vs-manual, the
-// owner id, and visibility — used to reject smart-collection writes, hidden
-// private collections, and (in the future) more granular permission checks.
+// owner id, visibility, and the owning event's client (for cross-client
+// isolation) and eventId (so we only add media from the same event).
 async function loadCollectionMeta(id: string) {
   return prisma.collection.findUnique({
     where: { id },
-    select: { isSmart: true, isPublic: true, createdById: true },
+    select: {
+      isSmart: true,
+      isPublic: true,
+      createdById: true,
+      eventId: true,
+      event: { select: { clientId: true } },
+    },
   });
 }
 
@@ -23,14 +29,15 @@ function notFound() {
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
 
   const { id } = await params;
   const meta = await loadCollectionMeta(id);
   if (!meta) return notFound();
-  // Hide other users' private collections — same rule as the GET route.
-  if (!meta.isPublic && meta.createdById !== authResult.user.id) return notFound();
+  // Cross-client isolation, then per-user visibility — same 404 rule as GET.
+  if (meta.event.clientId !== authResult.ctx.clientId) return notFound();
+  if (!meta.isPublic && meta.createdById !== authResult.ctx.id) return notFound();
   if (meta.isSmart) {
     return NextResponse.json(
       { error: 'Smart collections are auto-populated; items cannot be added manually' },
@@ -52,8 +59,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // is preserved. Start at 0 when the collection is empty.
   const nextOrderIndex = existingItems.reduce((max, item) => Math.max(max, item.orderIndex), -1) + 1;
 
-  // Filter out media already in the collection so we never create duplicates.
-  const mediaIdsToAdd = mediaIds.filter((mediaId) => !existingMediaIds.has(mediaId));
+  // Only media from the SAME event may join the collection — this also blocks
+  // smuggling in another client's media id (whose event has a different client).
+  const sameEventMedia = await prisma.media.findMany({
+    where: { id: { in: mediaIds }, eventId: meta.eventId },
+    select: { id: true },
+  });
+  const allowedMediaIds = new Set(sameEventMedia.map((m) => m.id));
+
+  // Filter out media already in the collection (no dupes) and any id that isn't
+  // a member of this event.
+  const mediaIdsToAdd = mediaIds.filter(
+    (mediaId) => allowedMediaIds.has(mediaId) && !existingMediaIds.has(mediaId),
+  );
   if (mediaIdsToAdd.length > 0) {
     await prisma.collectionItem.createMany({
       data: mediaIdsToAdd.map((mediaId, offset) => ({
@@ -74,13 +92,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
 
   const { id } = await params;
   const meta = await loadCollectionMeta(id);
   if (!meta) return notFound();
-  if (!meta.isPublic && meta.createdById !== authResult.user.id) return notFound();
+  if (meta.event.clientId !== authResult.ctx.clientId) return notFound();
+  if (!meta.isPublic && meta.createdById !== authResult.ctx.id) return notFound();
   if (meta.isSmart) {
     return NextResponse.json(
       { error: 'Smart collections are auto-populated; items cannot be removed manually' },

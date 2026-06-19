@@ -50,7 +50,8 @@ export default function AboutPage() {
                   yet.
                 </li>
                 <li>
-                  An admin sees your request, approves you, and assigns one of three roles:
+                  An admin approves you into a <strong>client</strong> (a customer or
+                  organization whose events you'll work on) and assigns your role there:
                   <ul>
                     <li>
                       <strong>Subscriber</strong> — view photos, filter/search, build collections,
@@ -61,10 +62,11 @@ export default function AboutPage() {
                       photos.
                     </li>
                     <li>
-                      <strong>Admin</strong> — everything above, plus manage events, users, and
-                      system settings.
+                      <strong>Client admin</strong> — everything above, plus manage events and
+                      members for that client.
                     </li>
                   </ul>
+                  You can belong to more than one client, with a different role in each.
                 </li>
                 <li>You can now sign in and use the app.</li>
               </ol>
@@ -101,9 +103,14 @@ export default function AboutPage() {
                 </li>
               </ul>
               <p>
-                If your role is Publisher or Admin, there's also a toggle on the right side of
-                the nav bar that switches between Subscriber Mode and Publisher Mode (the upload
+                If your role is Publisher or Client admin, there's also a toggle on the right side
+                of the nav bar that switches between Subscriber Mode and Publisher Mode (the upload
                 page).
+              </p>
+              <p>
+                If you belong to more than one client, a <strong>client switcher</strong> appears
+                in the nav bar. Everything you see — photos, events, collections — belongs to the
+                client you currently have selected; switch clients to work on a different one.
               </p>
             </section>
 
@@ -153,9 +160,9 @@ export default function AboutPage() {
                   automatically.
                 </li>
                 <li>
-                  <strong>One active event at a time.</strong> Photos always attach to whichever
-                  event is currently active. Switching the active event is an admin operation and
-                  scopes everything cleanly.
+                  <strong>One active event per client.</strong> Photos always attach to whichever
+                  event is active for the client you're working in. Switching the active event is a
+                  client-admin operation and scopes everything cleanly.
                 </li>
                 <li>
                   <strong>Direct-to-folder publish</strong> works in Chrome/Edge. You pick a

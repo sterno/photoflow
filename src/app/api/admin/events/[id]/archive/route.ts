@@ -4,8 +4,8 @@
 //          admin dialog can preview "this will be N photos, ~X GB".
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
-import { ArchiveJobStatus, UserRole } from '@/generated/prisma/client';
+import { requireClientAccess } from '@/lib/require-auth';
+import { ArchiveJobStatus, ClientRole } from '@/generated/prisma/client';
 import { runArchiveJob } from '@/server/archive/runArchiveJob';
 import type { ArchiveOptions } from '@/server/archive/types';
 
@@ -69,11 +69,14 @@ function shapeJob(job: {
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(UserRole.ADMIN);
+  const authResult = await requireClientAccess(ClientRole.CLIENT_ADMIN);
   if (authResult.response) return authResult.response;
 
   const { id: eventId } = await params;
-  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true } });
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, clientId: authResult.ctx.clientId },
+    select: { id: true },
+  });
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
   let body: { stripPii?: unknown } = {};
@@ -97,7 +100,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const job = await prisma.archiveJob.create({
     data: {
       eventId,
-      requestedById: authResult.user.id,
+      requestedById: authResult.ctx.id,
       status: ArchiveJobStatus.PENDING,
       options: { stripPii: options.stripPii ?? false },
     },
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(UserRole.ADMIN);
+  const authResult = await requireClientAccess(ClientRole.CLIENT_ADMIN);
   if (authResult.response) return authResult.response;
 
   const { id: eventId } = await params;
@@ -123,8 +126,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   // Match the POST handler's existence check — return 404 for unknown
   // eventIds instead of silently returning `{ job: null, estimate: 0 }`,
   // which made the GET route a noisy no-op for typos and a misleading
-  // success for malformed admin tooling calls.
-  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true } });
+  // success for malformed admin tooling calls. Scoped to the active client.
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, clientId: authResult.ctx.clientId },
+    select: { id: true },
+  });
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
   // Pull the latest job, a media count, and a fileSize sum in parallel. The

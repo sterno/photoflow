@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSignedDownloadUrl } from '@/lib/s3';
-import { requireAuth } from '@/lib/require-auth';
+import { requireClientAccess } from '@/lib/require-auth';
 import { getActiveEvent } from '@/lib/active-event';
 import { buildMediaWhere, parseMediaFilters } from '@/lib/media-filters';
 import type { Prisma } from '@/generated/prisma/client';
@@ -14,7 +14,7 @@ import type { Prisma } from '@/generated/prisma/client';
 const PAGE_SIZE = 20;
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth();
+  const authResult = await requireClientAccess();
   if (authResult.response) return authResult.response;
 
   const searchParams = request.nextUrl.searchParams;
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   // poll. Independent of idsOnly.
   const since = searchParams.get('since');
 
-  const event = await getActiveEvent();
+  const event = await getActiveEvent(authResult.ctx.clientId);
   if (!event) {
     if (idsOnly) return NextResponse.json({ ids: [], totalCount: 0 });
     return NextResponse.json({ photos: [], totalCount: 0, page, pageSize: PAGE_SIZE });

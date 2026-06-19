@@ -1,0 +1,87 @@
+# Self-contained PhotoFlow deployment: app + Postgres + MinIO (S3-compatible
+# media storage). No external accounts needed. Quick start:
+#
+#   AUTH_SECRET=$(openssl rand -base64 32) \
+#   MINIO_ROOT_PASSWORD=$(openssl rand -base64 24) \
+#   ADMIN_PASSWORD='choose-12+-characters' \
+#   docker compose up -d
+#
+# Then open http://localhost:3000 and sign in as `admin` with that password.
+# For convenience, put those variables in a `.env` file next to this one
+# instead of passing them inline (compose reads it automatically).
+#
+# Optional (add to .env): ANTHROPIC_API_KEY enables AI photo captions;
+# RESEND_API_KEY + RESEND_FROM_EMAIL enable password-reset emails.
+#
+# Hosting beyond localhost: set APP_URL to the public URL of the app and
+# S3_PUBLIC_ENDPOINT to the public URL of MinIO (port 9000) — browsers load
+# photos via presigned MinIO URLs, so that endpoint must be reachable from
+# every team member's machine, not just the server.
+#
+# Durability: your photos live on this machine's `minio-data` volume and the
+# database on `db-data`. Back them up — or point the app at Cloudflare R2 /
+# AWS S3 instead (see README "Storage options").
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://photoflow:${POSTGRES_PASSWORD:-photoflow}@db:5432/photoflow
+      NEXTAUTH_URL: ${APP_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET, e.g. AUTH_SECRET=$(openssl rand -base64 32)}
+      NEXTAUTH_SECRET: ${AUTH_SECRET}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD (12+ characters) for the first admin login}
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-photoflow}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD, e.g. MINIO_ROOT_PASSWORD=$(openssl rand -base64 24)}
+      AWS_S3_BUCKET: photoflow-media
+      # Server-side ops use the compose-network hostname; presigned URLs that
+      # browsers load are signed against the public endpoint.
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: photoflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-photoflow}
+      POSTGRES_DB: photoflow
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U photoflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-photoflow}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD, e.g. MINIO_ROOT_PASSWORD=$(openssl rand -base64 24)}
+    ports:
+      # 9000 must be reachable by browsers (presigned media URLs); 9001 is
+      # the MinIO admin console.
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+volumes:
+  db-data:
+  minio-data:

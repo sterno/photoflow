@@ -1,6 +1,6 @@
 {
   "name": "photoflow",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Streamlined publish/subscribe workflow for photographers and media teams covering live events.",
@@ -33,6 +33,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev && prisma generate",
     "db:setup": "tsx scripts/setup.ts",
+    "export:instance": "tsx scripts/export-instance.ts",
     "setup": "npm run db:generate && npm run db:migrate && npm run db:setup",
     "simulate": "node scripts/simulate-event.mjs",
     "viewer:install": "npm --prefix archive-viewer ci",
@@ -46,6 +47,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1047.0",
     "@neondatabase/serverless": "^1.1.0",
     "@prisma/adapter-neon": "^7.8.0",
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@types/archiver": "^7.0.0",
     "archiver": "^7.0.1",
@@ -63,7 +65,8 @@
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.2.6",
     "resend": "^6.12.3",
-    "sharp": "^0.34.3"
+    "sharp": "^0.34.3",
+    "unzipper": "^0.12.3"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.2.6",
@@ -76,6 +79,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/unzipper": "^0.10.11",
     "@vitest/coverage-v8": "^4.1.8",
     "dotenv": "^17.4.2",
     "eslint": "^9.39.4",

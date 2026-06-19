@@ -14,7 +14,7 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { id: 'getting-started', title: 'Getting started' },
-  { id: 'roles', title: 'User roles' },
+  { id: 'roles', title: 'Clients & roles' },
   { id: 'events', title: 'Events' },
   { id: 'uploading', title: 'Uploading photos' },
   { id: 'watched-folder', title: 'Watched-folder upload' },
@@ -77,13 +77,19 @@ export default function HelpPage() {
           </section>
 
           <section id="roles" className="mb-5">
-            <h3>User roles</h3>
-            <p>Four roles control what you can do:</p>
+            <h3>Clients &amp; user roles</h3>
+            <p>
+              Events belong to a <strong>client</strong> (a customer or organization). A user
+              either has global access or belongs to one or more clients. If you can reach more
+              than one client, use the <strong>client switcher</strong> in the nav bar — everything
+              you see is scoped to the client you currently have selected.
+            </p>
+            <p>Your role <em>within a client</em> controls what you can do there:</p>
             <ul>
               <li>
-                <strong>Admin</strong> — full access. Creates events, manages users, configures
-                global settings, activates/deactivates events, and can do everything Publishers
-                and Subscribers can do.
+                <strong>Client admin</strong> — manages that client's events and members
+                (<Link href="/admin/members">/admin/members</Link>), and can do everything
+                Publishers and Subscribers can do.
               </li>
               <li>
                 <strong>Publisher</strong> — can upload media in addition to all subscriber
@@ -94,23 +100,30 @@ export default function HelpPage() {
                 publish, but can't upload new photos.
               </li>
               <li>
-                <strong>Pending</strong> — new signups land here. They can't access anything until
-                an admin assigns a real role.
+                <strong>Pending</strong> — new signups land here. They can't access anything until a
+                client admin approves them into a client.
               </li>
             </ul>
+            <p>
+              A global <strong>super-admin</strong> manages every client and global account from
+              <Link href="/admin/clients"> /admin/clients</Link> and{' '}
+              <Link href="/admin/users">/admin/users</Link>, and can import a standalone instance as
+              a new client from <Link href="/admin/clients/import">/admin/clients/import</Link>.
+            </p>
           </section>
 
           <section id="events" className="mb-5">
             <h3>Events</h3>
             <p>
-              Admins manage events from <Link href="/admin/events">/admin/events</Link>. Each
-              event has:
+              Client admins manage events from <Link href="/admin/events">/admin/events</Link>
+              (scoped to the active client). Each event has:
             </p>
             <ul>
               <li>Name, description, start date, optional end date.</li>
               <li>
-                <strong>Active</strong> flag — only one event can be active at a time. Activating
-                an event deactivates the previous one in a single atomic step.
+                <strong>Active</strong> flag — only one event can be active <em>per client</em> at a
+                time. Activating an event deactivates the client's previous one in a single atomic
+                step.
               </li>
               <li>
                 <strong>AI processing toggle</strong> — turn off Claude captioning per event if

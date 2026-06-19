@@ -4,6 +4,12 @@
  * and smart collections. The offline archive viewer's filterMedia.ts must
  * mirror this semantics or smart collections will diverge between live and
  * offline views.
+ *
+ * Multi-client note: buildMediaWhere scopes by `eventId` only. Client isolation
+ * is the CALLER's responsibility — callers must pass an eventId that has already
+ * been resolved within the active client (e.g. via getActiveEvent(clientId) or a
+ * client-scoped event lookup). Because eventIds are globally unique, an
+ * event-scoped where is automatically client-scoped once the eventId is trusted.
  */
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@/generated/prisma/client';

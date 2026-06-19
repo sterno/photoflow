@@ -12,5 +12,13 @@ fi
 echo "[entrypoint] applying Prisma migrations…"
 npx prisma migrate deploy
 
+# One-click deploys (Railway template, Docker Compose) can't run `npm run
+# setup` by hand, so seed the first admin from env vars. The script is
+# idempotent: once an admin exists it exits without touching anything.
+if [ -n "${ADMIN_USERNAME}" ] && [ -n "${ADMIN_PASSWORD}" ]; then
+  echo "[entrypoint] ensuring admin user exists…"
+  npx tsx scripts/setup.ts
+fi
+
 echo "[entrypoint] starting Next.js…"
 exec node server.js

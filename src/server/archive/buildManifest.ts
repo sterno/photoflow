@@ -22,7 +22,9 @@ type CollectionWithItems = Collection & { items: CollectionItem[] };
  * any shape changes must stay in lockstep with archive-viewer/src/types.ts.
  */
 export function buildManifest(
-  event: Event,
+  // Event plus its owning client (provenance for the manifest). The client
+  // relation is optional so older callers/tests without it still typecheck.
+  event: Event & { client?: { id: string; name: string } | null },
   media: Media[],
   collections: CollectionWithItems[],
   opts: ArchiveOptions,
@@ -94,6 +96,7 @@ export function buildManifest(
   return {
     schemaVersion: 1,
     generatedAt: generatedAt.toISOString(),
+    ...(event.client ? { client: { id: event.client.id, name: event.client.name } } : {}),
     event: {
       id: event.id,
       name: event.name,

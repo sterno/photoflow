@@ -1,9 +1,19 @@
+<p align="center">
+  <img src="public/logo.png" alt="PhotoFlow" width="480" />
+</p>
+
 # PhotoFlow
 
 PhotoFlow is a streamlined photography workflow application for event coverage.
 It's built on a publish/subscribe model where photographers can upload photos
 during a live event and a media team can efficiently browse, filter, and
 publish content as it arrives.
+
+<p align="center">
+  <a href="https://railway.com/deploy/photoflow?referralCode=df1dnf&utm_medium=integration&utm_source=template&utm_campaign=generic"><img src="https://railway.com/button.svg" alt="Deploy on Railway" /></a>
+</p>
+
+<p align="center"><em>One-click deploy to your own Railway account — see <a href="#one-click-deploy-on-railway">setup details</a> below.</em></p>
 
 ## Features
 
@@ -21,9 +31,9 @@ publish content as it arrives.
 
 - **Frontend**: Next.js 16, React 19, TypeScript, React Bootstrap
 - **Backend**: Next.js App Router API routes, Prisma 7
-- **Database**: PostgreSQL (Neon Postgres via the serverless driver)
+- **Database**: PostgreSQL — any provider (Neon's serverless driver is used automatically for Neon URLs)
 - **Auth**: Auth.js v5 (`next-auth@5.0.0-beta`)
-- **Storage**: AWS S3
+- **Storage**: AWS S3 or any S3-compatible store (MinIO, Cloudflare R2, Backblaze B2)
 - **AI**: Claude API for image captioning
 - **Image processing**: Sharp (libvips) + `ffmpeg-static` for video thumbnails
 
@@ -32,10 +42,14 @@ publish content as it arrives.
 ### Prerequisites
 
 - Node.js 22+ (the project's CI runs against 22 and 24)
-- A PostgreSQL database (Neon Postgres recommended — see [`.env.example`](./.env.example) for the pooled-endpoint requirement)
-- An AWS S3 bucket
-- An Anthropic API key
+- A PostgreSQL database (any provider; for Neon use the pooled endpoint — see [`.env.example`](./.env.example))
+- An S3 bucket or S3-compatible store (MinIO, Cloudflare R2, Backblaze B2)
+- An Anthropic API key (optional — enables AI captions)
 - A Resend account for password-reset email (optional but recommended)
+
+> **Not a developer?** Skip this section — see
+> [Run PhotoFlow for your team](#run-photoflow-for-your-team) for the
+> click-a-button setup.
 
 ### Setup
 
@@ -127,13 +141,87 @@ npm run db:migrate   # Run database migrations
 npm run db:setup     # Seed admin + default event + config (requires env)
 ```
 
-## Deployment
+## Run PhotoFlow for your team
+
+You don't need to be a developer to run PhotoFlow. The one-click route below
+gets a small team a private, always-on PhotoFlow for roughly **$10–20/month**,
+with nothing to maintain day-to-day.
+
+### One-click: Deploy on Railway
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/photoflow?referralCode=df1dnf&utm_medium=integration&utm_source=template&utm_campaign=generic)
+
+Clicking the button creates your own copy of PhotoFlow on
+[Railway](https://railway.com) (a hosting service — you'll create an account
+and add a payment method). It sets up the app, a database, and photo storage
+together. You'll be asked for:
+
+- **ADMIN_USERNAME** — the login name for the first admin account
+  (default: `admin`)
+- **ADMIN_PASSWORD** — the admin's password. **Must be at least 12
+  characters** or the app will refuse to start
+- **ANTHROPIC_API_KEY** *(optional)* — enables AI photo captions and
+  people-detection. Get a key at
+  [console.anthropic.com](https://console.anthropic.com); leave blank to skip
+  (you can add it later under the service's Variables)
+- **RESEND_API_KEY / RESEND_FROM_EMAIL** *(optional)* — enables "forgot
+  password" emails via [resend.com](https://resend.com); leave blank to skip
+
+The first deploy takes several minutes (it builds the app and prepares the
+database). When it's done, open the app's URL and sign in with the admin
+credentials you entered.
+
+> **Where do my photos live?** With the default setup, photos are stored on a
+> single disk volume (MinIO) inside your Railway project. That's fine for
+> event workflows, but it is **one disk** — for photos you can't afford to
+> lose, enable Railway's volume backups or switch to dedicated storage like
+> Cloudflare R2 or AWS S3 (see [Storage options](#storage-options) below).
+
+### Self-host with Docker Compose
+
+If you have a server, NAS, or VPS that runs Docker, the included
+[`docker-compose.yml`](./docker-compose.yml) starts the entire stack — app,
+Postgres, and MinIO storage — with no external accounts:
+
+```bash
+AUTH_SECRET=$(openssl rand -base64 32) \
+MINIO_ROOT_PASSWORD=$(openssl rand -base64 24) \
+ADMIN_PASSWORD='choose-12+-characters' \
+docker compose up -d
+```
+
+Then open [http://localhost:3000](http://localhost:3000) and sign in as
+`admin`. See the comments at the top of the compose file for hosting beyond
+localhost (set `APP_URL` and `S3_PUBLIC_ENDPOINT` to your public URLs —
+browsers load photos directly from storage, so port 9000 must be reachable by
+your team, not just the server).
+
+### Storage options
+
+PhotoFlow works with AWS S3 or any S3-compatible store. To use Cloudflare R2
+(generous free tier) or Backblaze B2 instead of the bundled MinIO, set:
+
+- `S3_ENDPOINT` — your store's S3 API endpoint
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — credentials from that store
+- `AWS_S3_BUCKET` — the bucket name (create it in the provider's dashboard)
+- `AWS_REGION` — for R2, use `auto`
+
+If the server reaches storage over a private hostname but browsers need a
+different public URL, also set `S3_PUBLIC_ENDPOINT` (the compose file does
+this for MinIO). No data-path code changes — it's all environment variables.
+
+## Deployment notes
 
 The repo includes a [`Dockerfile`](./Dockerfile),
 [`docker-entrypoint.sh`](./docker-entrypoint.sh), and a
-[`railway.json`](./railway.json) configuration for Railway. We do **not**
-publish prebuilt Docker images — operators are expected to build their own
-from the `Dockerfile`. Two consequences of that choice:
+[`railway.json`](./railway.json) configuration for Railway. The entrypoint
+applies pending database migrations on every boot and, when `ADMIN_USERNAME`
+and `ADMIN_PASSWORD` are set, idempotently seeds the first admin user.
+
+We do **not** publish prebuilt Docker images — operators build their own from
+the `Dockerfile` (one-click deploys build from source inside your own hosting
+account, so PhotoFlow still redistributes no binaries). Two consequences of
+that choice:
 
 1. PhotoFlow itself does not redistribute any third-party binaries.
 2. When you build a Docker image, you become the distributor of the

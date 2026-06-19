@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
+import { requireClientAccess } from '@/lib/require-auth';
 import { getActiveEvent } from '@/lib/active-event';
 
 /**
@@ -53,10 +53,10 @@ function fetchEventNames(eventId: string): Promise<string[]> {
  */
 export async function GET() {
   try {
-    const authResult = await requireAuth();
+    const authResult = await requireClientAccess();
     if (authResult.response) return authResult.response;
 
-    const activeEvent = await getActiveEvent();
+    const activeEvent = await getActiveEvent(authResult.ctx.clientId);
     if (!activeEvent) {
       return NextResponse.json({ names: [] });
     }

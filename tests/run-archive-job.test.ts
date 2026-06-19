@@ -174,7 +174,9 @@ describe('runArchiveJob - happy path', () => {
 
     expect(findUniqueMock).toHaveBeenCalledWith({
       where: { id: 'job_1' },
-      include: { event: true },
+      // The event is loaded with its owning client so the manifest can record
+      // client provenance (multi-client "Prime").
+      include: { event: { include: { client: { select: { id: true, name: true } } } } },
     });
 
     // First update flips to RUNNING.

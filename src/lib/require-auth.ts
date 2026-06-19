@@ -5,9 +5,10 @@
 
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { hasPermission } from '@/lib/auth';
+import { hasPermission, hasClientPermission } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import type { UserRole } from '@/generated/prisma/client';
+import { resolveActiveClientId } from '@/lib/active-client';
+import type { UserRole, ClientRole } from '@/generated/prisma/client';
 
 export type AuthedUser = {
   id: string;
@@ -60,4 +61,89 @@ export async function requireAuth(minRole?: UserRole): Promise<
     return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
   return { user };
+}
+
+/**
+ * Authenticated user plus the resolved active-client context. `clientRole` is
+ * the user's effective role in `clientId` (always CLIENT_ADMIN for super-admins).
+ */
+export type ClientAuthedUser = AuthedUser & {
+  clientId: string;
+  clientRole: ClientRole;
+  isSuperAdmin: boolean;
+};
+
+/**
+ * Client-scoped auth gate. Layers on top of requireAuth: resolves the active
+ * client from the cookie (falling back to the user's first accessible client),
+ * reads the caller's membership live, and optionally enforces a minimum client
+ * role. A global super-admin (UserRole.ADMIN) bypasses membership and is treated
+ * as CLIENT_ADMIN in every client.
+ *
+ * Same discriminated-union shape as requireAuth: callers check `response` first
+ * and short-circuit, otherwise use `ctx`.
+ */
+export async function requireClientAccess(minClientRole?: ClientRole): Promise<
+  { ctx: ClientAuthedUser; response?: never } | { ctx?: never; response: NextResponse }
+> {
+  const authResult = await requireAuth();
+  if (authResult.response) return { response: authResult.response };
+  const user = authResult.user;
+
+  const clientId = await resolveActiveClientId(user);
+  if (!clientId) {
+    return {
+      response: NextResponse.json(
+        { error: 'No client selected' },
+        { status: 400 },
+      ),
+    };
+  }
+
+  const isSuperAdmin = user.role === 'ADMIN';
+  let clientRole: ClientRole;
+  if (isSuperAdmin) {
+    clientRole = 'CLIENT_ADMIN';
+  } else {
+    const membership = await prisma.clientMembership.findUnique({
+      where: { userId_clientId: { userId: user.id, clientId } },
+      select: { role: true },
+    });
+    if (!membership) {
+      return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+    }
+    clientRole = membership.role;
+  }
+
+  if (minClientRole && !hasClientPermission(clientRole, minClientRole)) {
+    return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+  }
+
+  return { ctx: { ...user, clientId, clientRole, isSuperAdmin } };
+}
+
+/**
+ * Gate for managing a SPECIFIC client by id (e.g. membership administration),
+ * independent of the cookie-based active client. Passes for a global
+ * super-admin, or for a user who is CLIENT_ADMIN of exactly that client.
+ * Returns the authed user on success or a ready 401/403 response.
+ */
+export async function requireClientAdminFor(clientId: string): Promise<
+  { user: AuthedUser; isSuperAdmin: boolean; response?: never }
+  | { user?: never; isSuperAdmin?: never; response: NextResponse }
+> {
+  const authResult = await requireAuth();
+  if (authResult.response) return { response: authResult.response };
+  const user = authResult.user;
+
+  if (user.role === 'ADMIN') return { user, isSuperAdmin: true };
+
+  const membership = await prisma.clientMembership.findUnique({
+    where: { userId_clientId: { userId: user.id, clientId } },
+    select: { role: true },
+  });
+  if (!membership || membership.role !== 'CLIENT_ADMIN') {
+    return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+  }
+  return { user, isSuperAdmin: false };
 }

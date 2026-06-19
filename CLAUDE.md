@@ -140,8 +140,11 @@ sizes, and the ability to share directly to configured social media.
 The base architecture is built on:
 - React / Next.js (App Router)
 - React Bootstrap
-- PostgreSQL (Neon Postgres + `@prisma/adapter-neon`)
-- AWS S3 for image storage
+- PostgreSQL — Neon in production (`@prisma/adapter-neon`); any other
+  Postgres via `@prisma/adapter-pg`, selected by hostname in
+  `src/lib/db-adapter.ts`
+- AWS S3 for image storage (or any S3-compatible store via `S3_ENDPOINT` —
+  see `src/lib/s3-config.ts`)
 
 ### Scale & performance assumptions
 - ~1000–2000 photos per event
@@ -149,16 +152,61 @@ The base architecture is built on:
 - Event data retained indefinitely for post-event usage
 - Polling-based updates (1–2 minute intervals) for new content
 
+## Clients (multi-tenancy)
+
+As of 1.1 "Prime", a **Client** sits above Events: one instance serves many
+clients, each owning many events. Everything event-scoped (media, collections,
+archive jobs) inherits client scope through `Event.clientId` — there is no
+denormalized `clientId` on those tables.
+
+- **Active client** — tracked in an httpOnly cookie (`pf_active_client`),
+  resolved server-side per request (`src/lib/active-client.ts`), switched via the
+  navbar `ClientSwitcher`. Routes stay flat (`/photos`, `/collections`, …).
+- **Active event is per client** — `getActiveEvent(clientId)`; a partial unique
+  index (`Event_one_active_per_client`) enforces ≤1 active event per client.
+  The activate endpoint scopes its deactivate to the event's client.
+- **Isolation** — every event/media/collection handler resolves the active
+  client first (`requireClientAccess`) and scopes queries to it. Handlers that
+  accept an id from the client (collections, photos, publish, archive) assert the
+  target's `event.clientId` matches before acting. The `events:list:{clientId}`
+  cache is keyed per client so one client's list can't leak to another.
+- **Importing a standalone instance** — `npm run export:instance` writes a
+  portable bundle ZIP on a source instance; super-admins import it as a new
+  client via `/admin/clients/import` (background `MigrationJob`). Users merge by
+  username/email; `src/server/migrate/` holds the export/import logic. The bundle
+  uploads **directly to S3** via presigned multipart parts (init → PUT parts →
+  complete, in `/api/admin/clients/import/{init,complete,abort}`) so there is no
+  app-server upload size limit; the import job then streams it back from S3 with
+  `unzipper.Open.s3_v3` (ranged reads, nothing spooled to disk) and deletes the
+  bundle when done. **Bucket CORS must allow `PUT` and expose the `ETag` header**
+  for the browser to read each part's ETag.
+
 ## Authentication & user management
 
 ### Authentication
-- Username/password via Auth.js v5
-- Single team/organization model — all users work on a common set of events
+- Username/password via Auth.js v5 (JWT). Coarse auth gating lives in
+  `src/proxy.ts` (Next 16 middleware); fine-grained checks are per-handler.
 
-### User roles
-- **Admin** — creates and configures events, manages users, full system access including publisher and subscriber capabilities
-- **Publisher** — uploads media; full access to subscriber features (viewing, filtering, creating collections, publishing)
-- **Subscriber** — read-only access to view media; can create collections and publish, but cannot upload new media
+### Two authorization axes
+- **Global** (`User.role`, the `UserRole` enum) — instance-wide. `ADMIN` is the
+  **super-admin**: manages clients, global accounts, and system config, and has
+  implicit `CLIENT_ADMIN` in every client. `PENDING` still gates self-signup.
+- **Per-client** (`ClientMembership.role`, the `ClientRole` enum:
+  `CLIENT_ADMIN > PUBLISHER > SUBSCRIBER`) — a user's role *within* one client.
+  A user may belong to several clients with different roles. Read live from the
+  DB in `requireClientAccess(minClientRole)` / `requireClientAdminFor(clientId)`
+  (`src/lib/require-auth.ts`) so revocations apply on the next request.
+
+### Roles (within a client)
+- **Client admin** (`CLIENT_ADMIN`) — sets up events and manages members within
+  their client (`/admin/members`, scoped to the active client).
+- **Publisher** — uploads media; full subscriber features (viewing, filtering,
+  collections, publishing).
+- **Subscriber** — read-only view; can create collections and publish, but cannot
+  upload.
+
+Global super-admins additionally manage all clients and global accounts at
+`/admin/clients` and `/admin/users`.
 
 ## Static archive export
 
@@ -211,3 +259,8 @@ These features exist live and won't ever be in the archive (require a backend):
 - Live polling / photo stream updates
 - Publish history badges (could be mirrored but currently deferred)
 - Filter presets (could be mirrored but currently deferred)
+- **Multi-client scoping** — the archive is a point-in-time export of a single
+  event, so it is inherently single-client. The manifest now carries the owning
+  client as display-only provenance (`Manifest.client`, surfaced in the viewer
+  header), but there is no client switcher or client-scoped filtering offline,
+  and `filterMedia.ts` is unchanged.

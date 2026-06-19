@@ -21,14 +21,17 @@ import {
 import { resolveImageSizesForEvent } from '@/lib/image-sizes';
 import { generateImageCaption } from '@/lib/claudeAI';
 import { withAiSlot } from '@/lib/ai-limit';
-import { requireAuth } from '@/lib/require-auth';
-import { UserRole } from '@/generated/prisma/client';
+import { requireClientAccess } from '@/lib/require-auth';
+import { getActiveEvent } from '@/lib/active-event';
+import { ClientRole } from '@/generated/prisma/client';
 
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requireAuth(UserRole.PUBLISHER);
+    // Upload is a write into the active client; require at least PUBLISHER
+    // within that client (super-admins pass as CLIENT_ADMIN).
+    const authResult = await requireClientAccess(ClientRole.PUBLISHER);
     if (authResult.response) return authResult.response;
-    const userId = authResult.user.id;
+    const userId = authResult.ctx.id;
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -70,9 +73,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const activeEvent = await prisma.event.findFirst({
-      where: { isActive: true },
-    });
+    const activeEvent = await getActiveEvent(authResult.ctx.clientId);
 
     if (!activeEvent) {
       return NextResponse.json(

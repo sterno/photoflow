@@ -43,7 +43,9 @@ export function App() {
             <span className="nav-count">({manifest.collections.length})</span>
           </a>
           <div className="nav-spacer" />
-          <span className="nav-event-name">{manifest.event.name}</span>
+          <span className="nav-event-name">
+            {manifest.client ? `${manifest.client.name} — ${manifest.event.name}` : manifest.event.name}
+          </span>
         </nav>
       )}
 

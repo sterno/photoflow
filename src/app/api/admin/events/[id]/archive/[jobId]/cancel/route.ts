@@ -2,8 +2,8 @@
 // POST /api/admin/events/[id]/archive/[jobId]/cancel
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/require-auth';
-import { ArchiveJobStatus, UserRole } from '@/generated/prisma/client';
+import { requireClientAccess } from '@/lib/require-auth';
+import { ArchiveJobStatus, ClientRole } from '@/generated/prisma/client';
 import { abortJob } from '@/server/archive/jobControllers';
 
 /**
@@ -16,12 +16,15 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string; jobId: string }> },
 ) {
-  const authResult = await requireAuth(UserRole.ADMIN);
+  const authResult = await requireClientAccess(ClientRole.CLIENT_ADMIN);
   if (authResult.response) return authResult.response;
 
   const { id: eventId, jobId } = await params;
-  const job = await prisma.archiveJob.findUnique({ where: { id: jobId } });
-  if (!job || job.eventId !== eventId) {
+  const job = await prisma.archiveJob.findUnique({
+    where: { id: jobId },
+    include: { event: { select: { clientId: true } } },
+  });
+  if (!job || job.eventId !== eventId || job.event.clientId !== authResult.ctx.clientId) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }
   if (job.status !== ArchiveJobStatus.PENDING && job.status !== ArchiveJobStatus.RUNNING) {
