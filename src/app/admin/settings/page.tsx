@@ -35,6 +35,37 @@ export default function AdminSettingsPage() {
   const [newName, setNewName] = useState('');
   const [newEdge, setNewEdge] = useState<number>(1920);
 
+  // AI model tier (always resolves to the latest model in the chosen family).
+  const [aiTier, setAiTier] = useState<'haiku' | 'sonnet'>('sonnet');
+  const [aiResolved, setAiResolved] = useState<string>('');
+  const [aiStatus, setAiStatus] = useState<{ kind: 'success' | 'danger'; text: string } | null>(null);
+
+  const loadAiModel = async () => {
+    const res = await fetch('/api/admin/settings/ai-model', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      setAiTier(data.tier);
+      setAiResolved(data.resolvedModel);
+    }
+  };
+
+  const saveAiTier = async (tier: 'haiku' | 'sonnet') => {
+    setAiStatus(null);
+    setAiTier(tier);
+    const res = await fetch('/api/admin/settings/ai-model', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setAiStatus({ kind: 'danger', text: data.error || 'Save failed' });
+      return;
+    }
+    setAiResolved(data.resolvedModel);
+    setAiStatus({ kind: 'success', text: 'Saved.' });
+  };
+
   const load = async () => {
     const res = await fetch('/api/admin/settings/image-sizes', { cache: 'no-store' });
     if (res.ok) {
@@ -47,6 +78,7 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     load();
+    loadAiModel();
   }, []);
 
   // Single PATCH path used by every mutation on this page (saving defaults,
@@ -101,6 +133,42 @@ export default function AdminSettingsPage() {
   return (
     <DashboardLayout>
       <h2 className="mb-4">Settings</h2>
+
+      <Card className="mb-4" style={{ maxWidth: 900 }}>
+        <Card.Body>
+          <Card.Title>AI model</Card.Title>
+          <p className="text-muted small">
+            Model used to caption and tag uploaded photos. Pick a family — the app
+            always uses the <strong>latest</strong> model in it, so new releases are
+            adopted automatically without a redeploy. Haiku is faster and cheaper;
+            Sonnet is more capable.
+          </p>
+
+          {aiStatus && <Alert variant={aiStatus.kind}>{aiStatus.text}</Alert>}
+
+          <Row className="g-3 align-items-end">
+            <Col md={5}>
+              <Form.Group>
+                <Form.Label>Model family</Form.Label>
+                <Form.Select
+                  value={aiTier}
+                  onChange={(e) => saveAiTier(e.target.value as 'haiku' | 'sonnet')}
+                >
+                  <option value="haiku">Latest Haiku (fast, low-cost)</option>
+                  <option value="sonnet">Latest Sonnet (most capable)</option>
+                </Form.Select>
+              </Form.Group>
+            </Col>
+            <Col md={7}>
+              {aiResolved && (
+                <div className="text-muted small">
+                  Currently resolves to <code>{aiResolved}</code>.
+                </div>
+              )}
+            </Col>
+          </Row>
+        </Card.Body>
+      </Card>
 
       {status && <Alert variant={status.kind}>{status.text}</Alert>}
 

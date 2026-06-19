@@ -37,6 +37,10 @@ resizing.
 ### AI processing
 - Image captioning and summarization using the Claude API
 - Automatic generation of searchable descriptions
+- Model is admin-selectable by *tier* (latest Haiku / latest Sonnet) in
+  Admin → Settings, stored in `SystemConfig` (`ai_model`). `src/lib/ai-model.ts`
+  resolves the tier to the newest concrete model in that family via the Models
+  API (cached, with a fallback), so new model releases are adopted automatically.
 
 ### Metadata extraction
 - Photographer name (from EXIF or file metadata)

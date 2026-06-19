@@ -2,18 +2,16 @@
 
 // Navbar dropdown for switching the active client. Reads the user's accessible
 // clients from /api/clients, and POSTs the chosen one to /api/clients/active
-// (which sets the pf_active_client cookie) then refreshes so server-resolved
-// data re-fetches under the new client. Hidden when the user can reach only one
+// (which sets the pf_active_client cookie), then does a full reload so every
+// page re-fetches under the new client. Hidden when the user can reach only one
 // client — there's nothing to switch.
 
 import { useEffect, useState, useCallback } from 'react';
 import { Dropdown, Spinner } from 'react-bootstrap';
-import { useRouter } from 'next/navigation';
 
 type AccessibleClient = { id: string; name: string; slug: string; role: string };
 
 export default function ClientSwitcher() {
-  const router = useRouter();
   const [clients, setClients] = useState<AccessibleClient[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
@@ -45,9 +43,13 @@ export default function ClientSwitcher() {
       });
       if (res.ok) {
         setActiveId(clientId);
-        // Server components and route handlers resolve the active client from
-        // the cookie, so a refresh re-renders everything under the new client.
-        router.refresh();
+        // A full reload is required, not router.refresh(): most pages are client
+        // components that fetch their data in a mount-only effect, so a soft
+        // refresh would leave their lists (events, photos, collections, members)
+        // showing the previous client. Reloading re-mounts everything so it all
+        // re-fetches under the newly-active client.
+        window.location.reload();
+        return; // keep the spinner up through the reload
       }
     } finally {
       setSwitching(false);

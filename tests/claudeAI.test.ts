@@ -54,6 +54,13 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: Anthropic };
 });
 
+// Model selection is resolved separately (tier → latest model via the Models
+// API). Stub it to a fixed id so this test stays hermetic and deterministic;
+// the resolver itself is covered by tests/ai-model.test.ts.
+vi.mock('@/lib/ai-model', () => ({
+  getActiveModelId: vi.fn().mockResolvedValue('claude-sonnet-4-6'),
+}));
+
 async function loadFresh(): Promise<{ generateImageCaption: GenerateImageCaption }> {
   vi.resetModules();
   return import('@/lib/claudeAI');

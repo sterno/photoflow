@@ -6,8 +6,7 @@
  * never block on AI availability.
  */
 import Anthropic from '@anthropic-ai/sdk';
-
-const MODEL = 'claude-sonnet-4-6';
+import { getActiveModelId } from '@/lib/ai-model';
 
 const SHOT_TYPES = [
   'panel',
@@ -110,8 +109,11 @@ export async function generateImageCaption(
   }
 
   try {
+    // Resolve the admin-selected tier (latest Haiku / latest Sonnet) to a
+    // concrete model id; cached, with a fallback so this never blocks a caption.
+    const model = await getActiveModelId();
     const response = await anthropic.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 1024,
       system: [
         {

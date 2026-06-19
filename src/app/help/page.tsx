@@ -368,8 +368,10 @@ export default function HelpPage() {
                 <strong>Approve</strong> button.
               </li>
               <li>
-                <strong>Settings</strong> — global default image sizes (thumbnail and preview
-                widths) and the list of named export sizes available in the publish modal.
+                <strong>Settings</strong> — the AI model family used for photo captioning
+                (Latest Haiku or Latest Sonnet — always the newest model in that family),
+                global default image sizes (thumbnail and preview widths), and the list of
+                named export sizes available in the publish modal.
               </li>
             </ul>
             <p>
