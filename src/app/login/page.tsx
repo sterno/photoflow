@@ -10,9 +10,10 @@
 
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
-import { Container, Card, Form, Button, Alert } from 'react-bootstrap';
+import { Card, Form, Button, Alert } from 'react-bootstrap';
 
 function LoginForm() {
   const router = useRouter();
@@ -54,9 +55,24 @@ function LoginForm() {
   };
 
   return (
-    <Card style={{ width: '100%', maxWidth: '400px' }}>
-      <Card.Body>
-        <h2 className="text-center mb-4">PhotoFlow Login</h2>
+    <Card style={{ width: '100%', maxWidth: '420px' }}>
+      <Card.Body className="p-4 p-sm-5">
+        <div className="text-center mb-4">
+          <Image
+            src="/logo-mark.png"
+            alt="PhotoFlow"
+            width={72}
+            height={72}
+            className="pf-brand-mark mb-3"
+            style={{ width: 72, height: 72, borderRadius: 18 }}
+            unoptimized
+            priority
+          />
+          <h1 className="h3 mb-1">
+            <span className="pf-gradient-text">PhotoFlow</span>
+          </h1>
+          <p className="text-secondary small mb-0">Sign in to your workspace</p>
+        </div>
         {error && <Alert variant="danger">{error}</Alert>}
         <Form onSubmit={handleSubmit}>
           <Form.Group className="mb-3">
@@ -113,10 +129,10 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Container className="d-flex align-items-center justify-content-center" style={{ minHeight: '100vh' }}>
+    <div className="pf-flow-stage d-flex align-items-center justify-content-center p-3">
       <Suspense fallback={<div>Loading...</div>}>
         <LoginForm />
       </Suspense>
-    </Container>
+    </div>
   );
 }

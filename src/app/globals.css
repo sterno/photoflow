@@ -1,68 +1,392 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   PhotoFlow design system — "Flow"
+   A dark, sleek creative-tool theme pulled straight from the logo: a deep navy
+   stage on which photos pop, lit by the vibrant "stream" accents flowing from
+   the camera lens (cyan → teal → magenta → amber). Bootstrap is re-themed at
+   the variable layer so every page inherits this look at once; signature
+   touches (flowing-stream backdrop, gradient wordmark, accent glow) live in the
+   utilities at the bottom.
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* --- Brand palette: surfaces (deep navy → elevated) --- */
+  --pf-bg:           #080d1a; /* app stage */
+  --pf-bg-2:         #0b1322; /* default body */
+  --pf-surface:      #111b2e; /* cards / panels */
+  --pf-surface-2:    #16233b; /* elevated / hover */
+  --pf-inset:        #0a1120; /* inputs / wells */
+  --pf-border:       #24324d;
+  --pf-border-soft:  #1a2740;
+
+  /* --- Text --- */
+  --pf-text:         #e9eefb;
+  --pf-text-muted:   #9fb0cf;
+  --pf-text-faint:   #6f80a0;
+
+  /* --- Stream accents (the colors flowing from the lens) --- */
+  --pf-cyan:    #3da9fc;
+  --pf-blue:    #4f7dff;
+  --pf-teal:    #2dd4bf;
+  --pf-magenta: #f25fae;
+  --pf-amber:   #ff9a3d;
+  --pf-green:   #57d171;
+
+  /* Primary action = electric cyan with dark ink for AA contrast */
+  --pf-primary:       #3da9fc;
+  --pf-primary-rgb:   61, 169, 252;
+  --pf-primary-strong:#5fb8ff;
+  --pf-on-primary:    #04203b;
+
+  /* The signature stream gradient, reused for wordmark, accents, hero. */
+  --pf-flow: linear-gradient(
+    100deg,
+    var(--pf-cyan)    0%,
+    var(--pf-teal)   28%,
+    var(--pf-blue)   52%,
+    var(--pf-magenta) 78%,
+    var(--pf-amber)  100%
+  );
+
+  --pf-radius:    14px;
+  --pf-radius-sm: 10px;
+  --pf-shadow:    0 18px 40px -24px rgba(0, 0, 0, 0.85);
+  --pf-shadow-lg: 0 30px 70px -30px rgba(0, 0, 0, 0.9);
+
+  /* Tailwind theme bridge (kept from the original scaffold) */
+  --background: var(--pf-bg-2);
+  --foreground: var(--pf-text);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ---------------------------------------------------------------------------
+   Re-theme Bootstrap's dark mode to the navy + cyan palette. Overriding these
+   CSS variables cascades to every component (buttons, cards, forms, tables,
+   dropdowns, modals, alerts, badges) without touching page markup.
+   ------------------------------------------------------------------------- */
+[data-bs-theme="dark"] {
+  --bs-body-bg: var(--pf-bg-2);
+  --bs-body-bg-rgb: 11, 19, 34;
+  --bs-body-color: var(--pf-text);
+  --bs-body-color-rgb: 233, 238, 251;
+  --bs-emphasis-color: #ffffff;
+  --bs-emphasis-color-rgb: 255, 255, 255;
+  --bs-secondary-color: var(--pf-text-muted);
+  --bs-secondary-bg: var(--pf-surface);
+  --bs-tertiary-color: var(--pf-text-faint);
+  --bs-tertiary-bg: var(--pf-inset);
+
+  --bs-border-color: var(--pf-border);
+  --bs-border-color-translucent: rgba(255, 255, 255, 0.08);
+
+  --bs-primary: var(--pf-primary);
+  --bs-primary-rgb: var(--pf-primary-rgb);
+  --bs-primary-text-emphasis: var(--pf-primary-strong);
+  --bs-primary-bg-subtle: #0d2138;
+  --bs-primary-border-subtle: #1c476f;
+
+  --bs-link-color: var(--pf-primary-strong);
+  --bs-link-color-rgb: 95, 184, 255;
+  --bs-link-hover-color: #9bd1ff;
+  --bs-link-hover-color-rgb: 155, 209, 255;
+
+  --bs-heading-color: var(--pf-text);
+  --bs-code-color: #ff9ecf;
+
+  --bs-focus-ring-color: rgba(var(--pf-primary-rgb), 0.35);
 }
 
+/* ---------------------------------------------------------------------------
+   Base typography & atmosphere
+   ------------------------------------------------------------------------- */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(1100px 620px at 88% -8%, rgba(61, 169, 252, 0.10), transparent 60%),
+    radial-gradient(1000px 560px at 8% 4%, rgba(242, 95, 174, 0.07), transparent 55%),
+    var(--pf-bg-2);
+  background-attachment: fixed;
+  color: var(--pf-text);
+  font-family: var(--font-body), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Restore native list rendering inside long-form content, since Tailwind's
-   preflight strips list markers/padding globally. Applied via the `.prose`
-   class on the wrapper of any page that has bulleted/numbered prose. */
-.prose ul,
-.prose ol {
-  padding-left: 1.5rem;
-  margin-bottom: 1rem;
-}
-.prose ul {
-  list-style: disc;
-}
-.prose ol {
-  list-style: decimal;
-}
-.prose ul ul,
-.prose ol ul {
-  list-style: circle;
+h1, h2, h3, h4, h5, h6, .navbar-brand {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  letter-spacing: -0.015em;
 }
 
-/* Tailwind v4 ships a `.collapse` utility that applies `visibility: collapse`,
-   which collides with Bootstrap's `.collapse` component class. Bootstrap's
-   Collapse transitions through classes `collapse` → `collapsing` → `collapse show`;
-   once the open animation finishes and the element lands at `.collapse.show`,
-   the Tailwind utility hides the contents (you see the panel animate open with
-   text, then the text vanishes). Re-assert visibility on Bootstrap collapsibles. */
-.collapse.show,
-.collapsing,
-.navbar-collapse {
-  visibility: visible;
+h1, h2 { font-weight: 700; }
+
+/* ---------------------------------------------------------------------------
+   Navigation bar — frosted navy with a hairline stream underline
+   ------------------------------------------------------------------------- */
+.navbar {
+  background: rgba(9, 15, 28, 0.82) !important;
+  backdrop-filter: saturate(140%) blur(14px);
+  -webkit-backdrop-filter: saturate(140%) blur(14px);
+  border-bottom: 1px solid var(--pf-border-soft);
+  position: relative;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+.navbar::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: var(--pf-flow);
+  opacity: 0.7;
+}
+.navbar .nav-link {
+  color: var(--pf-text-muted) !important;
+  font-weight: 500;
+  border-radius: 8px;
+  padding-inline: 0.7rem !important;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.navbar .nav-link:hover { color: var(--pf-text) !important; }
+.navbar .nav-link.active {
+  color: #ffffff !important;
+  background: rgba(var(--pf-primary-rgb), 0.14);
 }
 
-/* Photo card hover effect */
+/* Brand lockup: logo mark + gradient wordmark */
+.pf-brand { display: inline-flex; align-items: center; gap: 0.6rem; }
+.pf-brand-mark {
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px var(--pf-border), 0 6px 16px -8px rgba(61, 169, 252, 0.6);
+}
+.pf-wordmark {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+  background: var(--pf-flow);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   Cards / panels — elevated surfaces with soft depth
+   ------------------------------------------------------------------------- */
+.card {
+  --bs-card-bg: var(--pf-surface);
+  --bs-card-border-color: var(--pf-border-soft);
+  --bs-card-cap-bg: transparent;
+  border-radius: var(--pf-radius);
+  box-shadow: var(--pf-shadow);
+}
+.card .card-header { border-bottom-color: var(--pf-border-soft); }
+.list-group { --bs-list-group-bg: transparent; --bs-list-group-border-color: var(--pf-border-soft); }
+.modal-content {
+  background: var(--pf-surface);
+  border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius);
+  box-shadow: var(--pf-shadow-lg);
+}
+.modal-header, .modal-footer { border-color: var(--pf-border-soft); }
+.dropdown-menu {
+  --bs-dropdown-bg: var(--pf-surface-2);
+  --bs-dropdown-border-color: var(--pf-border);
+  --bs-dropdown-link-hover-bg: rgba(var(--pf-primary-rgb), 0.16);
+  --bs-dropdown-link-active-bg: rgba(var(--pf-primary-rgb), 0.24);
+  border-radius: var(--pf-radius-sm);
+  box-shadow: var(--pf-shadow);
+}
+
+/* ---------------------------------------------------------------------------
+   Buttons — electric primary with a subtle stream gradient + glow
+   ------------------------------------------------------------------------- */
+.btn { font-weight: 600; border-radius: 10px; }
+.btn-primary {
+  --bs-btn-color: var(--pf-on-primary);
+  --bs-btn-hover-color: var(--pf-on-primary);
+  --bs-btn-active-color: var(--pf-on-primary);
+  --bs-btn-bg: var(--pf-primary);
+  --bs-btn-border-color: var(--pf-primary);
+  --bs-btn-hover-bg: var(--pf-primary-strong);
+  --bs-btn-hover-border-color: var(--pf-primary-strong);
+  --bs-btn-active-bg: var(--pf-primary-strong);
+  --bs-btn-disabled-bg: var(--pf-primary);
+  --bs-btn-disabled-border-color: var(--pf-primary);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0));
+  box-shadow: 0 8px 22px -12px rgba(var(--pf-primary-rgb), 0.9);
+}
+.btn-primary:hover { box-shadow: 0 10px 26px -10px rgba(var(--pf-primary-rgb), 1); }
+.btn-outline-primary {
+  --bs-btn-color: var(--pf-primary-strong);
+  --bs-btn-border-color: rgba(var(--pf-primary-rgb), 0.55);
+  --bs-btn-hover-color: var(--pf-on-primary);
+  --bs-btn-hover-bg: var(--pf-primary);
+  --bs-btn-hover-border-color: var(--pf-primary);
+}
+.btn-secondary {
+  --bs-btn-bg: var(--pf-surface-2);
+  --bs-btn-border-color: var(--pf-border);
+  --bs-btn-color: var(--pf-text);
+  --bs-btn-hover-bg: #1d2e4c;
+  --bs-btn-hover-border-color: #2d4068;
+  --bs-btn-hover-color: #fff;
+}
+
+/* ---------------------------------------------------------------------------
+   Forms — inset wells with an accent focus ring
+   ------------------------------------------------------------------------- */
+.form-control, .form-select {
+  background-color: var(--pf-inset);
+  border-color: var(--pf-border);
+  color: var(--pf-text);
+  border-radius: 10px;
+}
+.form-control::placeholder { color: var(--pf-text-faint); }
+.form-control:focus, .form-select:focus {
+  background-color: var(--pf-inset);
+  border-color: rgba(var(--pf-primary-rgb), 0.7);
+  color: var(--pf-text);
+  box-shadow: 0 0 0 0.22rem rgba(var(--pf-primary-rgb), 0.22);
+}
+.form-control:disabled { background-color: #0c1424; opacity: 0.7; }
+.input-group-text { background: var(--pf-surface-2); border-color: var(--pf-border); color: var(--pf-text-muted); }
+
+/* ---------------------------------------------------------------------------
+   Tables, badges, alerts
+   ------------------------------------------------------------------------- */
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--pf-text);
+  --bs-table-border-color: var(--pf-border-soft);
+  --bs-table-striped-bg: rgba(255, 255, 255, 0.025);
+  --bs-table-hover-bg: rgba(var(--pf-primary-rgb), 0.08);
+}
+.table > thead {
+  color: var(--pf-text-muted);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+/* Highlight a "current"/active row with a brand tint + accent rail instead of
+   a heavy full-row color wash — reads clearly on the dark stage. Uses
+   Bootstrap's own table variables so striping/hover still compose correctly. */
+.table > tbody > tr.pf-row-active {
+  --bs-table-bg: rgba(var(--pf-primary-rgb), 0.10);
+  --bs-table-hover-bg: rgba(var(--pf-primary-rgb), 0.16);
+}
+.table > tbody > tr.pf-row-active > td:first-child {
+  border-left: 3px solid var(--pf-primary);
+}
+.badge.bg-secondary { background-color: var(--pf-surface-2) !important; color: var(--pf-text-muted); }
+.badge.bg-primary { background-color: var(--pf-primary) !important; color: var(--pf-on-primary); }
+.alert { border-radius: var(--pf-radius-sm); border-width: 1px; }
+
+/* ---------------------------------------------------------------------------
+   Long-form content (about / help). Restore list rendering stripped by
+   Tailwind's preflight; applied via `.prose` on the page wrapper.
+   ------------------------------------------------------------------------- */
+.prose ul, .prose ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+.prose ul { list-style: disc; }
+.prose ol { list-style: decimal; }
+.prose ul ul, .prose ol ul { list-style: circle; }
+
+/* Tailwind v4 ships a `.collapse` utility (visibility: collapse) that collides
+   with Bootstrap's `.collapse` component. Re-assert visibility on Bootstrap
+   collapsibles so opened navbars/panels don't vanish. */
+.collapse.show, .collapsing, .navbar-collapse { visibility: visible; }
+
+/* ---------------------------------------------------------------------------
+   Photo cards — lift + accent ring on hover; photos read as the content
+   ------------------------------------------------------------------------- */
 .photo-card {
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   cursor: pointer;
+  border-radius: var(--pf-radius-sm);
+}
+.photo-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 34px -18px rgba(0, 0, 0, 0.9),
+              0 0 0 1px rgba(var(--pf-primary-rgb), 0.45);
 }
 
-.photo-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+/* ---------------------------------------------------------------------------
+   Signature: flowing-stream backdrop (login / hero / empty states)
+   Layered drifting gradient blobs evoke the streams pouring from the lens.
+   ------------------------------------------------------------------------- */
+.pf-flow-stage {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  isolation: isolate;
 }
+.pf-flow-stage::before,
+.pf-flow-stage::after {
+  content: "";
+  position: absolute;
+  inset: -25%;
+  z-index: -1;
+  background:
+    radial-gradient(38% 50% at 20% 30%, rgba(61, 169, 252, 0.30), transparent 60%),
+    radial-gradient(36% 46% at 78% 24%, rgba(45, 212, 191, 0.22), transparent 60%),
+    radial-gradient(40% 54% at 66% 80%, rgba(242, 95, 174, 0.22), transparent 62%),
+    radial-gradient(34% 44% at 28% 82%, rgba(255, 154, 61, 0.16), transparent 60%);
+  filter: blur(36px);
+  animation: pf-drift 22s ease-in-out infinite alternate;
+}
+.pf-flow-stage::after {
+  animation-duration: 30s;
+  animation-direction: alternate-reverse;
+  opacity: 0.7;
+}
+@keyframes pf-drift {
+  0%   { transform: translate3d(-3%, -2%, 0) rotate(0deg)   scale(1.05); }
+  50%  { transform: translate3d(4%, 3%, 0)   rotate(8deg)   scale(1.12); }
+  100% { transform: translate3d(2%, -3%, 0)  rotate(-6deg)  scale(1.06); }
+}
+
+/* A thin animated stream rule — for dividers / accents */
+.pf-stream-rule {
+  height: 3px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--pf-flow);
+  background-size: 200% 100%;
+  animation: pf-stream 6s linear infinite;
+  opacity: 0.85;
+}
+@keyframes pf-stream {
+  to { background-position: -200% 0; }
+}
+
+.pf-gradient-text {
+  background: var(--pf-flow);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-flow-stage::before, .pf-flow-stage::after,
+  .pf-stream-rule { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Custom scrollbars to match the dark stage
+   ------------------------------------------------------------------------- */
+* { scrollbar-color: var(--pf-border) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb {
+  background: var(--pf-border);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: #324563; background-clip: content-box; }

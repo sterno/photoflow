@@ -10,11 +10,13 @@ export const metadata = {
 
 export default function AboutPage() {
   return (
-    <div className="bg-light text-dark min-vh-100">
-      <header className="bg-dark text-white py-4">
+    <div className="min-vh-100">
+      <header className="pf-flow-stage py-5" style={{ minHeight: 'auto' }}>
         <div className="container">
-          <h1 className="h2 mb-1">PhotoFlow</h1>
-          <p className="mb-0 text-white-50">
+          <h1 className="display-5 mb-2">
+            <span className="pf-gradient-text">PhotoFlow</span>
+          </h1>
+          <p className="mb-0 fs-5 text-secondary">
             A shared workspace for photographers and a media team covering the same event.
           </p>
         </div>
@@ -214,7 +216,7 @@ export default function AboutPage() {
         </div>
       </main>
 
-      <footer className="bg-dark text-white-50 py-3 text-center small">
+      <footer className="py-4 text-center small text-secondary border-top" style={{ borderColor: 'var(--pf-border-soft)' }}>
         <div className="container">PhotoFlow</div>
       </footer>
     </div>

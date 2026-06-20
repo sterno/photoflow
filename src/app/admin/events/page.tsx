@@ -10,7 +10,7 @@
 
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Table, Button, Form, Modal, Alert, Badge } from 'react-bootstrap';
+import { Table, Button, Form, Modal, Alert, Badge, Dropdown } from 'react-bootstrap';
 import EventArchiveCell from '@/components/admin/EventArchiveCell';
 
 interface EventRow {
@@ -24,6 +24,14 @@ interface EventRow {
   imageSizes: { thumbnail: number; preview: number } | null;
   _count?: { media: number; collections: number };
 }
+
+// Consistent, compact date rendering for the table (e.g. "Jun 20, 2026").
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 
 export default function AdminEventsPage() {
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -197,65 +205,96 @@ export default function AdminEventsPage() {
       {loading ? (
         <div>Loading...</div>
       ) : (
-        <Table striped hover>
+        <Table responsive hover className="align-middle">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Start</th>
-              <th>End</th>
-              <th>Media</th>
-              <th>Collections</th>
+              <th>Event</th>
+              <th>Dates</th>
+              <th>Contents</th>
               <th>Status</th>
               <th>Archive</th>
-              <th></th>
+              <th className="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
             {events.map((e) => (
-              <tr key={e.id} className={e.isActive ? 'table-success' : undefined}>
+              <tr key={e.id} className={e.isActive ? 'pf-row-active' : undefined}>
                 <td>
-                  {e.isActive && <span className="me-2" aria-hidden>★</span>}
-                  <strong>{e.name}</strong>
-                  {e.description && <div className="text-muted small">{e.description}</div>}
+                  <div className="fw-semibold">
+                    {e.isActive && (
+                      <span className="me-2 text-warning" aria-hidden title="Active event">★</span>
+                    )}
+                    {e.name}
+                  </div>
+                  {e.description && (
+                    <div className="text-secondary small mt-1">{e.description}</div>
+                  )}
                 </td>
-                <td>{new Date(e.startDate).toLocaleDateString()}</td>
-                <td>{e.endDate ? new Date(e.endDate).toLocaleDateString() : '—'}</td>
-                <td>{e._count?.media ?? 0}</td>
-                <td>{e._count?.collections ?? 0}</td>
+                <td className="text-nowrap">
+                  <div>{fmtDate(e.startDate)}</div>
+                  <div className="text-secondary small">
+                    {e.endDate ? `→ ${fmtDate(e.endDate)}` : 'No end date'}
+                  </div>
+                </td>
+                <td className="text-nowrap">
+                  <div>
+                    {(e._count?.media ?? 0).toLocaleString()}{' '}
+                    <span className="text-secondary">photos</span>
+                  </div>
+                  <div className="text-secondary small">
+                    {(e._count?.collections ?? 0).toLocaleString()} collections
+                  </div>
+                </td>
                 <td>
-                  {e.isActive ? <Badge bg="success">Active</Badge> : <Badge bg="secondary">Inactive</Badge>}
-                  {!e.aiEnabled && <Badge bg="warning" className="ms-1">AI off</Badge>}
+                  <div className="d-flex flex-column align-items-start gap-1">
+                    {e.isActive ? (
+                      <Badge bg="success">Active</Badge>
+                    ) : (
+                      <Badge bg="secondary">Inactive</Badge>
+                    )}
+                    {!e.aiEnabled && (
+                      <Badge bg="warning" text="dark">AI off</Badge>
+                    )}
+                  </div>
                 </td>
                 <td>
                   <EventArchiveCell eventId={e.id} />
                 </td>
                 <td>
-                  {!e.isActive && (
-                    <Button size="sm" variant="outline-success" className="me-2" onClick={() => activate(e.id)}>
-                      Activate
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline-secondary" className="me-2" onClick={() => openEdit(e)}>
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline-warning"
-                    className="me-2"
-                    disabled={(e._count?.media ?? 0) === 0}
-                    onClick={() => purge(e)}
-                  >
-                    Purge media
-                  </Button>
-                  <Button size="sm" variant="outline-danger" onClick={() => remove(e.id)}>
-                    Delete
-                  </Button>
+                  <div className="d-flex gap-2 justify-content-end align-items-center">
+                    {!e.isActive && (
+                      <Button size="sm" variant="outline-success" onClick={() => activate(e.id)}>
+                        Activate
+                      </Button>
+                    )}
+                    <Dropdown align="end">
+                      <Dropdown.Toggle size="sm" variant="outline-secondary">
+                        Manage
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu
+                        renderOnMount
+                        popperConfig={{ strategy: 'fixed' }}
+                      >
+                        <Dropdown.Item onClick={() => openEdit(e)}>Edit details</Dropdown.Item>
+                        <Dropdown.Item
+                          disabled={(e._count?.media ?? 0) === 0}
+                          onClick={() => purge(e)}
+                        >
+                          Purge media…
+                        </Dropdown.Item>
+                        <Dropdown.Divider />
+                        <Dropdown.Item className="text-danger" onClick={() => remove(e.id)}>
+                          Delete event
+                        </Dropdown.Item>
+                      </Dropdown.Menu>
+                    </Dropdown>
+                  </div>
                 </td>
               </tr>
             ))}
             {events.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center text-muted">
+                <td colSpan={6} className="text-center text-secondary py-4">
                   No events yet — create one to start uploading.
                 </td>
               </tr>

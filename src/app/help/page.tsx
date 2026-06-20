@@ -39,7 +39,7 @@ export default function HelpPage() {
               <Card.Header>Contents</Card.Header>
               <Nav className="flex-column" variant="pills">
                 {SECTIONS.map((section) => (
-                  <Nav.Link key={section.id} href={`#${section.id}`} className="text-dark py-1 px-3">
+                  <Nav.Link key={section.id} href={`#${section.id}`} className="text-body py-1 px-3">
                     {section.title}
                   </Nav.Link>
                 ))}

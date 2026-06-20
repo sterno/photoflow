@@ -5,6 +5,7 @@
 // between the two during an event via the badge on the right.
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { Navbar, Nav, Container, Dropdown, Badge } from 'react-bootstrap';
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
@@ -66,9 +67,20 @@ export default function Navigation() {
   const canPublish = user?.role === 'ADMIN' || user?.role === 'PUBLISHER';
 
   return (
-    <Navbar bg="dark" data-bs-theme="dark" expand="lg" className="mb-4">
+    <Navbar data-bs-theme="dark" expand="lg" className="mb-4">
       <Container fluid>
-        <Navbar.Brand href="/">PhotoFlow</Navbar.Brand>
+        <Navbar.Brand href="/" className="pf-brand">
+          <Image
+            src="/logo-mark.png"
+            alt="PhotoFlow"
+            width={34}
+            height={34}
+            className="pf-brand-mark"
+            unoptimized
+            priority
+          />
+          <span className="pf-wordmark">PhotoFlow</span>
+        </Navbar.Brand>
         <Navbar.Toggle aria-controls="main-navbar" />
         <Navbar.Collapse id="main-navbar">
           <Nav className="me-auto">
