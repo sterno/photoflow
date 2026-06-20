@@ -60,7 +60,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const event = await prisma.event.update({ where: { id }, data: updateData });
-  revalidateTag(`events:list:${clientId}`, 'minutes');
+  revalidateTag(`events:list:${clientId}`, { expire: 0 });
   return NextResponse.json({ event });
 }
 
@@ -83,6 +83,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     );
   }
   await prisma.event.delete({ where: { id } });
-  revalidateTag(`events:list:${clientId}`, 'minutes');
+  revalidateTag(`events:list:${clientId}`, { expire: 0 });
   return NextResponse.json({ success: true });
 }

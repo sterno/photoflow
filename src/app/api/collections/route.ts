@@ -113,6 +113,6 @@ export async function POST(request: NextRequest) {
       filters: parsedFilters ? JSON.parse(JSON.stringify(parsedFilters)) : null,
     },
   });
-  revalidateTag(`collections:event:${event.id}`, 'minutes');
+  revalidateTag(`collections:event:${event.id}`, { expire: 0 });
   return NextResponse.json({ collection }, { status: 201 });
 }

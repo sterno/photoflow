@@ -171,7 +171,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const collection = await prisma.collection.update({ where: { id }, data: updateData });
-  revalidateTag(`collections:event:${collection.eventId}`, 'minutes');
+  revalidateTag(`collections:event:${collection.eventId}`, { expire: 0 });
   return NextResponse.json({ collection });
 }
 
@@ -193,6 +193,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   await prisma.collection.delete({ where: { id } });
-  revalidateTag(`collections:event:${existing.eventId}`, 'minutes');
+  revalidateTag(`collections:event:${existing.eventId}`, { expire: 0 });
   return NextResponse.json({ success: true });
 }

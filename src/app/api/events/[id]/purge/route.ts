@@ -73,8 +73,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   // Both the events list (media counts) and the per-event name cache are now
   // stale for this event.
-  revalidateTag(`events:list:${clientId}`, 'minutes');
-  revalidateTag(`photos:names:${event.id}`, 'minutes');
+  revalidateTag(`events:list:${clientId}`, { expire: 0 });
+  revalidateTag(`photos:names:${event.id}`, { expire: 0 });
   return NextResponse.json({
     deletedMedia: deletedMediaCount,
     s3Deleted,

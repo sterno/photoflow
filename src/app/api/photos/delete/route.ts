@@ -3,6 +3,7 @@
  * rows (publish logs, collection items), and best-effort S3 object removal.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { deleteFromS3 } from '@/lib/s3';
 import { requireClientAccess } from '@/lib/require-auth';
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
     where: { id: { in: ids }, event: { clientId: ctx.clientId } },
     select: {
       id: true,
+      eventId: true,
       uploaderId: true,
       s3Key: true,
       s3ThumbnailKey: true,
@@ -109,6 +111,16 @@ export async function POST(request: NextRequest) {
       where: { id: { in: deletableIds } },
     }),
   ]);
+
+  // Invalidate every cache that reflects this media: the client's event list
+  // (media counts), and — per distinct event the deleted media spanned — the
+  // name list (aiVisibleNames) and the collection list (manual collections'
+  // item counts shift when their CollectionItem rows are removed).
+  revalidateTag(`events:list:${ctx.clientId}`, { expire: 0 });
+  for (const eventId of new Set(media.map((m) => m.eventId))) {
+    revalidateTag(`photos:names:${eventId}`, { expire: 0 });
+    revalidateTag(`collections:event:${eventId}`, { expire: 0 });
+  }
 
   const s3Result = await deleteFromS3(s3Keys);
   if (s3Result.errors.length > 0) {

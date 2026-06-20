@@ -5,6 +5,7 @@
  * Smart collections are auto-populated from filters and reject both verbs.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { requireClientAccess } from '@/lib/require-auth';
 
@@ -83,6 +84,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Bump updatedAt so the "recently changed" sort on the listing reflects
     // additions; Prisma won't update it automatically for a child-table write.
     await prisma.collection.update({ where: { id }, data: { updatedAt: new Date() } });
+    // Item count + updatedAt sort on the cached collection list just changed.
+    revalidateTag(`collections:event:${meta.eventId}`, { expire: 0 });
   }
 
   return NextResponse.json({
@@ -112,8 +115,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     return NextResponse.json({ error: 'mediaIds is required' }, { status: 400 });
   }
 
-  await prisma.collectionItem.deleteMany({
+  const { count } = await prisma.collectionItem.deleteMany({
     where: { collectionId: id, mediaId: { in: mediaIds } },
   });
+  // Removed items change the cached collection list's item count.
+  if (count > 0) revalidateTag(`collections:event:${meta.eventId}`, { expire: 0 });
   return NextResponse.json({ success: true });
 }

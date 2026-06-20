@@ -67,6 +67,6 @@ export async function POST(request: NextRequest) {
       aiEnabled: typeof aiEnabled === 'boolean' ? aiEnabled : true,
     },
   });
-  revalidateTag(`events:list:${clientId}`, 'minutes');
+  revalidateTag(`events:list:${clientId}`, { expire: 0 });
   return NextResponse.json({ event }, { status: 201 });
 }

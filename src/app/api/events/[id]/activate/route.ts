@@ -45,6 +45,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     `Activated event ${id} (${result.activated.name}) in client ${clientId}; deactivated ${result.deactivatedCount} other event(s)`,
   );
 
-  revalidateTag(`events:list:${clientId}`, 'minutes');
+  revalidateTag(`events:list:${clientId}`, { expire: 0 });
   return NextResponse.json({ success: true, ...result });
 }
