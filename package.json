@@ -89,5 +89,9 @@
     "tsx": "^4.22.2",
     "typescript": "^5",
     "vitest": "^4.1.8"
+  },
+  "overrides": {
+    "postcss": "^8.5.10",
+    "@prisma/dev": "^0.24.14"
   }
 }
