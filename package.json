@@ -99,6 +99,7 @@
     "valibot": "^1.4.2",
     "@prisma/config": {
       "deepmerge-ts": "^8.0.1"
-    }
+    },
+    "mysql2": "^3.24.3"
   }
 }
