@@ -246,6 +246,6 @@ describe('fileSize', () => {
     const { fileSize } = await import('@/server/archive/streamToZipToS3');
     const size = await fileSize('/tmp/x.zip');
     expect(typeof size).toBe('bigint');
-    expect(size).toBe(12345n);
+    expect(size).toBe(BigInt(12345));
   });
 });

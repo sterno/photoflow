@@ -22,7 +22,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const getMock = vi.fn();
 const setMock = vi.fn();
 const delMock = vi.fn();
-const createStoreMock = vi.fn(() => ({ __store: true }));
+// Rest param so the pass-through below can spread idb-keyval's real args in.
+const createStoreMock = vi.fn((..._args: unknown[]) => ({ __store: true }));
 
 vi.mock('idb-keyval', () => ({
   get: (...args: unknown[]) => getMock(...args),
