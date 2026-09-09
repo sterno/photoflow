@@ -45,10 +45,18 @@ type FakeArchive = EventEmitter & {
 };
 
 /**
+ * The fake implements only the slice of `Archiver` that `appendMediaAssets`
+ * touches (`append`, `pointer`, and the `'entry'` event), so it is handed to
+ * the function under test through this alias rather than the full interface.
+ */
+type ArchiveArg = Parameters<typeof appendMediaAssets>[0];
+
+/**
  * Build a fake archive. By default, `append` synchronously emits `'entry'`
  * on the next microtask so the slot releases naturally.
  */
-function makeArchive(opts: { autoEntry?: boolean } = {}): FakeArchive {
+function makeArchive(opts: { autoEntry?: boolean } = {}): FakeArchive &
+  ArchiveArg {
   const autoEntry = opts.autoEntry ?? true;
   const ee = new EventEmitter() as FakeArchive;
   ee._appended = [];
@@ -64,7 +72,7 @@ function makeArchive(opts: { autoEntry?: boolean } = {}): FakeArchive {
       ee._entriesPending++;
     }
   });
-  return ee;
+  return ee as FakeArchive & ArchiveArg;
 }
 
 function makeMedia(id: string, withAssets = true, originalFilename?: string) {
