@@ -80,7 +80,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/unzipper": "^0.10.11",
-    "@vitest/coverage-v8": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.11",
     "dotenv": "^17.4.2",
     "eslint": "^9.39.4",
     "jsdom": "^29.1.1",
@@ -88,7 +88,7 @@
     "tailwindcss": "^4.3.0",
     "tsx": "^4.22.2",
     "typescript": "^5",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "postcss": "^8.5.10",
