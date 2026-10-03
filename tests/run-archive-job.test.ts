@@ -37,7 +37,7 @@ vi.mock('@/server/archive/streamToZipToS3', () => ({
   createDiskArchive: vi.fn(),
   uploadFileToS3: vi.fn(),
   safeUnlink: vi.fn().mockResolvedValue(undefined),
-  fileSize: vi.fn().mockResolvedValue(1024n),
+  fileSize: vi.fn().mockResolvedValue(BigInt(1024)),
 }));
 
 vi.mock('@/server/archive/appendMediaAssets', () => ({
@@ -130,7 +130,7 @@ function setupDefaults(): void {
   collectionFindManyMock.mockResolvedValue([] as never);
   updateMock.mockResolvedValue({} as never);
   updateManyMock.mockResolvedValue({ count: 1 } as never);
-  fileSizeMock.mockResolvedValue(1024n);
+  fileSizeMock.mockResolvedValue(BigInt(1024));
   safeUnlinkMock.mockResolvedValue(undefined);
   appendMediaAssetsMock.mockResolvedValue(undefined);
   appendViewerBundleMock.mockResolvedValue(undefined);
@@ -205,7 +205,7 @@ describe('runArchiveJob - happy path', () => {
     };
     expect(doneArg.where.status).toBe(ArchiveJobStatus.RUNNING);
     expect(doneArg.data.s3Key).toMatch(/event_1.*job_1/);
-    expect(doneArg.data.sizeBytes).toBe(1024n);
+    expect(doneArg.data.sizeBytes).toBe(BigInt(1024));
   });
 
   it('registers a job controller at the start and unregisters it in the finally', async () => {
@@ -440,7 +440,9 @@ describe('runArchiveJob - conditional writes', () => {
       .mockResolvedValueOnce({ count: 1 } as never)
       .mockResolvedValueOnce({ count: 0 } as never);
 
-    findUniqueMock.mockImplementation(async ({ where }) => {
+    // Prisma's findUnique returns a thenable client, not a bare Promise, so the
+    // async stub is cast the same way the resolved-value stubs above are.
+    findUniqueMock.mockImplementation((async ({ where }: { where: unknown }) => {
       // The s3Key in the worker is `archives/event_<id>/job_<id>.zip` style;
       // we don't need to know the exact format because cleanupS3IfOrphan
       // reads s3Key from the row it just looked up and compares it against
@@ -460,7 +462,7 @@ describe('runArchiveJob - conditional writes', () => {
         } as never;
       }
       return null;
-    });
+    }) as never);
 
     await runArchiveJob({ jobId: 'job_1' });
 

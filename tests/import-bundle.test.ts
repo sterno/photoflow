@@ -40,6 +40,11 @@ import { prisma } from '@/lib/prisma';
 import { importBundle } from '@/server/migrate/importBundle';
 import type { BundleManifest } from '@/server/migrate/bundleTypes';
 
+/** The injected S3 put, typed from importBundle's own deps bag. */
+type UploadToS3 = NonNullable<
+  Parameters<typeof importBundle>[0]['deps']
+>['uploadToS3'];
+
 const migrationJobUpdate = vi.mocked(prisma.migrationJob.update);
 const clientFindUnique = vi.mocked(prisma.client.findUnique);
 const clientCreate = vi.mocked(prisma.client.create);
@@ -173,9 +178,13 @@ function setupDefaults() {
       upsert: vi.fn(() => Promise.resolve({ id: 'm', role: 'PUBLISHER', user: {} })),
     },
   };
-  transactionMock.mockImplementation((cb: unknown) =>
-    typeof cb === 'function' ? (cb as (tx: unknown) => unknown)(txMock) : Promise.resolve(undefined),
-  );
+  // $transaction is overloaded (callback form and array form); this stub only
+  // serves the callback form the code under test uses, hence the `as never`
+  // used throughout this file for Prisma stubs.
+  transactionMock.mockImplementation(((cb: unknown) =>
+    typeof cb === 'function'
+      ? (cb as (tx: unknown) => unknown)(txMock)
+      : Promise.resolve(undefined)) as never);
 
   eventCreate.mockResolvedValue({ id: 'new-evt-1' } as never);
   mediaCreate.mockResolvedValue({ id: 'new-med-1' } as never);
@@ -185,12 +194,12 @@ function setupDefaults() {
 }
 
 describe('importBundle - happy path', () => {
-  let uploadToS3: ReturnType<typeof vi.fn>;
+  let uploadToS3: ReturnType<typeof vi.fn<UploadToS3>>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     setupDefaults();
-    uploadToS3 = vi.fn().mockResolvedValue(undefined);
+    uploadToS3 = vi.fn<UploadToS3>().mockResolvedValue(undefined);
   });
 
   it('imports a representative bundle and returns the expected tallies', async () => {
@@ -283,12 +292,12 @@ describe('importBundle - happy path', () => {
 });
 
 describe('importBundle - validation guards', () => {
-  let uploadToS3: ReturnType<typeof vi.fn>;
+  let uploadToS3: ReturnType<typeof vi.fn<UploadToS3>>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     setupDefaults();
-    uploadToS3 = vi.fn().mockResolvedValue(undefined);
+    uploadToS3 = vi.fn<UploadToS3>().mockResolvedValue(undefined);
   });
 
   it('throws on an unsupported schema version', async () => {
