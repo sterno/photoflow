@@ -8,7 +8,7 @@
 // the bundler-virtual 'server-only' module can't resolve. S3 access is injected
 // (see ExportDeps) so this stays free of the server-only `@/lib/s3` import.
 import type { Readable, Writable } from 'node:stream';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { prisma } from '@/lib/prisma';
 import {
   BUNDLE_SCHEMA_VERSION,
@@ -110,7 +110,7 @@ export async function exportClientBundle(
     }
   }
 
-  const archive = archiver('zip', { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   const done = new Promise<void>((resolve, reject) => {
     archive.on('error', reject);
     output.on('error', reject);

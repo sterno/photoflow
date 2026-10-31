@@ -5,7 +5,7 @@
 
 import 'server-only';
 import { NextRequest } from 'next/server';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { Readable } from 'stream';
 import sharp from 'sharp';
 import { prisma } from '@/lib/prisma';
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     .map((id) => media.find((row) => row.id === id))
     .filter((row): row is (typeof media)[number] => Boolean(row));
 
-  const archive = archiver('zip', { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       archive.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));

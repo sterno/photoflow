@@ -4,7 +4,7 @@
  * lib-storage and tidying up the temp file afterwards.
  */
 import 'server-only';
-import archiver, { type Archiver } from 'archiver';
+import { ZipArchive, type Archiver } from 'archiver';
 import { Upload } from '@aws-sdk/lib-storage';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { stat, unlink } from 'node:fs/promises';
@@ -38,7 +38,7 @@ export function createDiskArchive(jobId: string): {
   const writeStream = createWriteStream(tempPath);
   // store: true skips deflate entirely — images/videos are already
   // compressed, so deflating wastes CPU for sub-1% size gains.
-  const archive = archiver('zip', { zlib: { level: 0 }, store: true });
+  const archive = new ZipArchive({ zlib: { level: 0 }, store: true });
   archive.pipe(writeStream);
 
   const closed = new Promise<void>((resolve, reject) => {
