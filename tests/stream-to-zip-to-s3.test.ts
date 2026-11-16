@@ -49,7 +49,9 @@ vi.mock('node:fs/promises', () => ({
 }));
 
 vi.mock('archiver', () => ({
-  default: (...args: unknown[]) => {
+  // archiver 8 replaced the archiver('zip', opts) factory with format
+  // classes. Returning an object from a constructor makes `new` yield it.
+  ZipArchive: function FakeZipArchive(...args: unknown[]) {
     archiverCtor(...args);
     return fakeArchive;
   },
@@ -116,7 +118,7 @@ describe('createDiskArchive', () => {
   it("constructs archiver with { zlib: { level: 0 }, store: true }", async () => {
     const { createDiskArchive } = await import('@/server/archive/streamToZipToS3');
     createDiskArchive('j-zlib');
-    expect(archiverCtor).toHaveBeenCalledWith('zip', { zlib: { level: 0 }, store: true });
+    expect(archiverCtor).toHaveBeenCalledWith({ zlib: { level: 0 }, store: true });
   });
 
   it('pipes the archiver into the write stream', async () => {
